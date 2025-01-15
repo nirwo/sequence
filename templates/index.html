@@ -305,11 +305,17 @@
         <div id="systemsPage">
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <h2>Systems</h2>
-                <div class="btn-group">
+                <div>
+                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addSystemWizardModal">
+                        <i class="fas fa-plus"></i> Add System
+                    </button>
                     <button class="btn btn-outline-primary" onclick="handleImportClick()">
                         <i class="fas fa-file-import"></i> Import CSV
                     </button>
                     <input type="file" id="csvFileInput" accept=".csv" style="display: none;" onchange="handleFileSelect(this)">
+                    <button id="refreshButton" class="btn btn-secondary">
+                        <i class="fas fa-sync"></i> Refresh All
+                    </button>
                 </div>
             </div>
             <div id="systemsContainer" class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
@@ -318,128 +324,33 @@
         </div>
     </div>
 
-    <!-- Temporarily disabled summary
-    <div id="summaryPage" class="container" style="display: none;">
-        <h2>Systems Summary</h2>
-        <div class="row">
-            <div class="col-md-6">
-                <div class="card mb-4">
-                    <div class="card-header">
-                        <h5 class="card-title mb-0">System Status</h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between mb-3">
-                            <span>Total Systems:</span>
-                            <span id="totalSystems" class="badge bg-secondary">0</span>
-                        </div>
-                        <div class="d-flex justify-content-between mb-3">
-                            <span>Online:</span>
-                            <span id="onlineSystems" class="badge bg-success">0</span>
-                        </div>
-                        <div class="d-flex justify-content-between mb-3">
-                            <span>Offline:</span>
-                            <span id="offlineSystems" class="badge bg-danger">0</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-6">
-                <div class="card mb-4">
-                    <div class="card-header">
-                        <h5 class="card-title mb-0">Database Status</h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between mb-3">
-                            <span>Total Databases:</span>
-                            <span id="dbTotal" class="badge bg-secondary">0</span>
-                        </div>
-                        <div class="d-flex justify-content-between mb-3">
-                            <span>DB Services Online:</span>
-                            <span id="dbOnline" class="badge bg-success">0</span>
-                        </div>
-                        <div class="d-flex justify-content-between mb-3">
-                            <span>DB Services Offline:</span>
-                            <span id="dbOffline" class="badge bg-danger">0</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="row">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="card-title mb-0">Sequence Status</h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between mb-3">
-                            <span>Not Started:</span>
-                            <span id="notStartedCount" class="badge bg-secondary">0</span>
-                        </div>
-                        <div class="d-flex justify-content-between mb-3">
-                            <span>In Progress:</span>
-                            <span id="inProgressCount" class="badge bg-warning">0</span>
-                        </div>
-                        <div class="d-flex justify-content-between mb-3">
-                            <span>Completed:</span>
-                            <span id="completedCount" class="badge bg-success">0</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="row">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="card-title mb-0">Recent Errors</h5>
-                    </div>
-                    <div class="card-body">
-                        <ul class="list-group" id="recentErrors">
-                        </ul>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    -->
-
     <template id="systemCardTemplate">
         <div class="col">
-            <div class="card h-100" data-system-id="">
+            <div class="card h-100">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="card-title mb-0 system-name"></h5>
-                    <span class="status-badge badge"></span>
+                    <span class="status-badge"></span>
                 </div>
                 <div class="card-body">
-                    <p class="status-text mb-3"></p>
                     <div class="system-details">
                         <p class="mb-2"><strong>Application:</strong> <span class="app-name"></span></p>
                         <p class="mb-2"><strong>Target:</strong> <span class="target"></span></p>
                         <p class="mb-2"><strong>Check Type:</strong> <span class="check-type"></span></p>
                         <p class="mb-2"><strong>Database:</strong> <span class="database"></span></p>
                         <p class="mb-2"><strong>Owner:</strong> <span class="owner"></span></p>
-                        <div class="cluster-nodes"></div>
                     </div>
-                    <div class="test-results"></div>
                 </div>
-                <div class="card-footer text-end">
-                    <div class="btn-group">
-                        <button class="btn btn-sm btn-primary test-btn" onclick="">
-                            <i class="fas fa-sync-alt loading-spinner" style="display: none;"></i>
-                            Test Now
+                <div class="card-footer">
+                    <div class="btn-group float-end">
+                        <button class="btn btn-sm btn-primary test-btn">
+                            <i class="fas fa-sync-alt"></i> Test
                         </button>
-                        <button class="btn btn-sm btn-secondary edit-btn" onclick="">
+                        <button class="btn btn-sm btn-secondary edit-btn">
                             <i class="fas fa-edit"></i>
                         </button>
-                        <button class="btn btn-sm btn-danger delete-btn" onclick="">
+                        <button class="btn btn-sm btn-danger delete-btn">
                             <i class="fas fa-trash"></i>
                         </button>
-                    </div>
-                </div>
-                <div class="spinner-container d-none">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">Testing...</span>
                     </div>
                 </div>
             </div>
@@ -720,19 +631,17 @@
 
         // Fetch systems from the server
         function fetchSystems() {
-            showToast('Loading systems...', 'info');
+            console.log('Fetching systems...');
             fetch('/api/systems')
                 .then(response => {
+                    console.log('Response status:', response.status);
                     if (!response.ok) {
                         throw new Error(`HTTP error! status: ${response.status}`);
                     }
                     return response.json();
                 })
                 .then(data => {
-                    if (data.error) {
-                        throw new Error(data.error);
-                    }
-                    
+                    console.log('Received data:', data);
                     const systemsContainer = document.getElementById('systemsContainer');
                     systemsContainer.innerHTML = ''; // Clear existing cards
                     
@@ -746,15 +655,14 @@
                         return;
                     }
                     
-                    // Sort systems by name
-                    data.systems.sort((a, b) => a.name.localeCompare(b.name));
-                    
                     data.systems.forEach(system => {
-                        createSystemCard(system);
+                        const card = createSystemCard(system);
+                        if (card) {
+                            systemsContainer.appendChild(card);
+                        }
                     });
                     
-                    showToast(`Loaded ${data.systems.length} systems`, 'success');
-                    updateSummary();
+                    console.log(`Created ${data.systems.length} system cards`);
                 })
                 .catch(error => {
                     console.error('Error fetching systems:', error);
@@ -763,16 +671,14 @@
                             <div class="alert alert-danger">
                                 <i class="fas fa-exclamation-triangle"></i> 
                                 Error loading systems: ${error.message}
-                                <br>
-                                <small>Please check your connection and try refreshing the page.</small>
                             </div>
                         </div>`;
-                    showToast('Failed to load systems. Please check your connection.', 'error');
                 });
         }
 
         // Create a system card
         function createSystemCard(system) {
+            console.log('Creating card for system:', system);
             if (!system || !system._id) {
                 console.error('Invalid system data:', system);
                 return null;
@@ -786,32 +692,26 @@
 
             try {
                 const clone = document.importNode(template.content, true);
-                
-                // Set system ID and data attributes
                 const card = clone.querySelector('.card');
-                if (!card) return null;
                 
+                // Set system ID
                 card.setAttribute('data-system-id', system._id);
                 
-                // Set system name and status
-                const systemName = clone.querySelector('.system-name');
-                if (systemName) {
-                    systemName.textContent = system.name || 'Unnamed System';
+                // Set system name
+                const nameElement = clone.querySelector('.system-name');
+                if (nameElement) {
+                    nameElement.textContent = system.name || 'Unnamed System';
                 }
                 
+                // Set status badge
                 const statusBadge = clone.querySelector('.status-badge');
                 if (statusBadge) {
-                    statusBadge.className = `status-badge badge ${system.status ? 'bg-success' : 'bg-danger'}`;
+                    statusBadge.className = `status-badge ${system.status ? 'online' : 'offline'}`;
                     statusBadge.textContent = system.status ? 'Online' : 'Offline';
                 }
                 
-                const statusText = clone.querySelector('.status-text');
-                if (statusText) {
-                    statusText.textContent = `${system.name || 'System'} is ${system.status ? 'online' : 'offline'}`;
-                }
-                
-                // Set system details
-                const elements = {
+                // Set details
+                const details = {
                     'app-name': system.app_name || 'N/A',
                     'target': system.target || 'N/A',
                     'check-type': system.check_type || 'ping',
@@ -819,199 +719,34 @@
                     'owner': system.owner || 'N/A'
                 };
 
-                Object.entries(elements).forEach(([className, value]) => {
+                Object.entries(details).forEach(([className, value]) => {
                     const element = clone.querySelector(`.${className}`);
                     if (element) {
                         element.textContent = value;
                     }
                 });
-                
-                // Set up cluster nodes if present
-                const clusterNodesDiv = clone.querySelector('.cluster-nodes');
-                if (clusterNodesDiv && system.cluster_nodes && system.cluster_nodes.length > 0) {
-                    const nodesHtml = `
-                        <p class="mb-2"><strong>Cluster Nodes:</strong></p>
-                        <ul class="list-unstyled">
-                            ${system.cluster_nodes.map(node => {
-                                const nodeStatus = node.status || false;
-                                const httpStatus = node.http_status || false;
-                                const pingStatus = node.ping_status || false;
-                                
-                                return `
-                                    <li class="mb-2">
-                                        <div class="d-flex align-items-center">
-                                            <i class="fas fa-server me-2"></i>
-                                            ${node.host}
-                                            <div class="ms-2">
-                                                ${system.check_type === 'both' ? `
-                                                    <span class="badge ${httpStatus ? 'bg-success' : 'bg-danger'} me-1" 
-                                                          title="${httpStatus ? 'HTTP OK' : 'HTTP Failed'}">
-                                                        <i class="fas fa-globe"></i>
-                                                    </span>
-                                                    <span class="badge ${pingStatus ? 'bg-success' : 'bg-danger'}" 
-                                                          title="${pingStatus ? 'Ping OK' : 'Ping Failed'}">
-                                                        <i class="fas fa-network-wired"></i>
-                                                    </span>
-                                                ` : `
-                                                    <span class="badge ${nodeStatus ? 'bg-success' : 'bg-danger'}" 
-                                                          title="${nodeStatus ? 'Online' : 'Offline'}">
-                                                        ${system.check_type === 'http' ? 
-                                                            '<i class="fas fa-globe"></i>' : 
-                                                            '<i class="fas fa-network-wired"></i>'}
-                                                    </span>
-                                                `}
-                                            </div>
-                                        </div>
-                                    </li>
-                                `;
-                            }).join('')}
-                        </ul>
-                    `;
-                    clusterNodesDiv.innerHTML = nodesHtml;
-                }
-                
-                // Set up test results display
-                const testResultsDiv = clone.querySelector('.test-results');
-                if (testResultsDiv) {
-                    testResultsDiv.innerHTML = `
-                        <div class="mt-2">
-                            ${system.check_type === 'both' ? `
-                                <span class="badge ${system.http_status ? 'bg-success' : 'bg-danger'} me-1" 
-                                      title="${system.http_status ? 'HTTP OK' : system.http_error || 'HTTP Failed'}">
-                                    <i class="fas fa-globe"></i> HTTP
-                                </span>
-                                <span class="badge ${system.ping_status ? 'bg-success' : 'bg-danger'}" 
-                                      title="${system.ping_status ? 'Ping OK' : system.ping_error || 'Ping Failed'}">
-                                    <i class="fas fa-network-wired"></i> Ping
-                                </span>
-                            ` : system.check_type === 'http' ? `
-                                <span class="badge ${system.http_status ? 'bg-success' : 'bg-danger'}" 
-                                      title="${system.http_status ? 'HTTP OK' : system.http_error || 'HTTP Failed'}">
-                                    <i class="fas fa-globe"></i> HTTP
-                                </span>
-                            ` : `
-                                <span class="badge ${system.ping_status ? 'bg-success' : 'bg-danger'}" 
-                                      title="${system.ping_status ? 'Ping OK' : system.ping_error || 'Ping Failed'}">
-                                    <i class="fas fa-network-wired"></i> Ping
-                                </span>
-                            `}
-                            ${system.db_type !== 'N/A' ? `
-                                <span class="badge ${system.db_status ? 'bg-success' : 'bg-danger'}" 
-                                      title="${system.db_status ? 'Database OK' : 'Database Failed'}">
-                                    <i class="fas fa-database"></i> DB
-                                </span>
-                            ` : ''}
-                        </div>
-                    `;
-                }
-                
+
                 // Set up button handlers
                 const testBtn = clone.querySelector('.test-btn');
                 if (testBtn) {
-                    testBtn.innerHTML = `
-                        <i class="fas fa-sync-alt"></i>
-                        Test Now
-                    `;
                     testBtn.onclick = () => testSystem(system._id);
                 }
 
-                // Add loading spinner container
-                const spinnerContainer = document.createElement('div');
-                spinnerContainer.className = 'spinner-container d-none';
-                spinnerContainer.innerHTML = `
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">Testing...</span>
-                    </div>
-                `;
-                card.appendChild(spinnerContainer);
+                const editBtn = clone.querySelector('.edit-btn');
+                if (editBtn) {
+                    editBtn.onclick = () => editSystem(system._id);
+                }
+
+                const deleteBtn = clone.querySelector('.delete-btn');
+                if (deleteBtn) {
+                    deleteBtn.onclick = () => deleteSystem(system._id);
+                }
 
                 return clone;
             } catch (error) {
                 console.error('Error creating system card:', error);
                 return null;
             }
-        }
-
-        function testSystem(systemId) {
-            const card = document.querySelector(`[data-system-id="${systemId}"]`);
-            if (!card) return;
-
-            const spinner = card.querySelector('.spinner-container');
-            const testBtn = card.querySelector('.test-btn');
-            
-            // Show spinner and disable button
-            spinner.classList.remove('d-none');
-            testBtn.disabled = true;
-
-            fetch(`/api/systems/test/${systemId}`, {
-                method: 'POST'
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.error) {
-                    showToast(data.error, 'error');
-                    return;
-                }
-
-                // Update the status badge
-                const statusBadge = card.querySelector('.status-badge');
-                if (statusBadge) {
-                    statusBadge.className = `status-badge badge ${data.status ? 'bg-success' : 'bg-danger'}`;
-                    statusBadge.textContent = data.status ? 'Online' : 'Offline';
-                }
-
-                // Update test results
-                const testResultsDiv = card.querySelector('.test-results');
-                if (testResultsDiv && data.messages) {
-                    const resultsHtml = data.messages.map(msg => `
-                        <span class="badge ${msg.status ? 'bg-success' : 'bg-danger'} me-1" 
-                              title="${msg.message}">
-                            <i class="fas fa-${msg.type === 'http' ? 'globe' : msg.type === 'ping' ? 'network-wired' : 'database'}"></i>
-                            ${msg.type.toUpperCase()}
-                        </span>
-                    `).join('');
-                    testResultsDiv.innerHTML = `<div class="mt-2">${resultsHtml}</div>`;
-                }
-
-                // Update cluster nodes
-                const clusterNodesDiv = card.querySelector('.cluster-nodes');
-                if (clusterNodesDiv && data.nodes) {
-                    const nodesHtml = `
-                        <p class="mb-2"><strong>Cluster Nodes:</strong></p>
-                        <ul class="list-unstyled">
-                            ${data.nodes.map(node => `
-                                <li class="mb-2">
-                                    <div class="d-flex align-items-center">
-                                        <i class="fas fa-server me-2"></i>
-                                        ${node.host}
-                                        <div class="ms-2">
-                                            ${node.messages.map(msg => `
-                                                <span class="badge ${msg.status ? 'bg-success' : 'bg-danger'} me-1" 
-                                                      title="${msg.message}">
-                                                    <i class="fas fa-${msg.type === 'http' ? 'globe' : 'network-wired'}"></i>
-                                                </span>
-                                            `).join('')}
-                                        </div>
-                                    </div>
-                                </li>
-                            `).join('')}
-                        </ul>
-                    `;
-                    clusterNodesDiv.innerHTML = nodesHtml;
-                }
-
-                // Show success message
-                showToast('System test completed', 'success');
-            })
-            .catch(error => {
-                console.error('Error testing system:', error);
-                showToast('Error testing system: ' + error.message, 'error');
-            })
-            .finally(() => {
-                // Hide spinner and enable button
-                spinner.classList.add('d-none');
-                testBtn.disabled = false;
-            });
         }
 
         // Add sorting function
