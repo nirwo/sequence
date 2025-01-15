@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, Response
+from flask import Flask, render_template, request, jsonify, Response, send_from_directory
 from flask_pymongo import PyMongo
 from datetime import datetime
 import threading
@@ -11,7 +11,7 @@ import io
 import json
 from bson import ObjectId, json_util
 
-app = Flask(__name__)
+app = Flask(__name__, static_url_path='/static', static_folder='static')
 app.config["MONGO_URI"] = os.getenv("MONGO_URI", "mongodb://localhost:27017/app_monitor")
 mongo = PyMongo(app)
 

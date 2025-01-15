@@ -278,26 +278,34 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
+                    <div class="alert alert-info">
+                        <h6 class="mb-2">CSV Import Instructions:</h6>
+                        <ol class="mb-0">
+                            <li>Download the <a href="/static/example_systems.csv" download class="alert-link">example CSV file</a> to see the required format</li>
+                            <li>Create your CSV file following the same structure</li>
+                            <li>Upload your file and map the columns</li>
+                            <li>Required fields: System Name, Application Name, Target URL/IP</li>
+                        </ol>
+                    </div>
                     <div class="mb-3">
-                        <label class="form-label">CSV File</label>
+                        <label class="form-label">CSV File <span class="text-danger">*</span></label>
                         <input type="file" class="form-control" id="csvMappingFile" accept=".csv" onchange="previewCSV(this)">
                         <div class="form-text">
-                            Upload a CSV file with system information. 
-                            <a href="/api/csv/template" class="text-primary" download>Download CSV Template</a>
+                            File must be in CSV format with headers matching the example file.
                         </div>
                     </div>
                     
                     <div id="csvPreview" class="d-none">
                         <h6 class="mb-3">CSV Preview</h6>
                         <div class="table-responsive mb-3">
-                            <table class="table table-sm">
+                            <table class="table table-sm table-striped">
                                 <thead id="csvPreviewHeader"></thead>
                                 <tbody id="csvPreviewBody"></tbody>
                             </table>
                         </div>
                         
                         <h6 class="mb-3">Field Mapping</h6>
-                        <p class="text-muted small">Map CSV columns to system fields. Required fields are marked with *</p>
+                        <p class="text-muted small">Map your CSV columns to system fields. Required fields are marked with *</p>
                         <div class="row" id="fieldMapping">
                             <!-- Field mapping will be populated here -->
                         </div>
