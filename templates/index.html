@@ -680,8 +680,9 @@
             
             fetch('/api/systems')
                 .then(response => response.json())
-                .then(systems => {
-                    if (!Array.isArray(systems) || systems.length === 0) {
+                .then(data => {
+                    const systems = data.systems || [];
+                    if (systems.length === 0) {
                         systemsContainer.innerHTML = `
                             <div class="col-12 text-center">
                                 <p class="text-muted">No systems found. Add a system to get started.</p>
@@ -735,7 +736,7 @@
                 const card = clone.querySelector('.card');
                 if (!card) return null;
                 
-                card.setAttribute('data-system-id', system._id);
+                card.setAttribute('data-system-id', system._id.$oid);
                 
                 // Set system name and status
                 const systemName = clone.querySelector('.system-name');
@@ -776,15 +777,19 @@
                     const nodesHtml = `
                         <p class="mb-2"><strong>Cluster Nodes:</strong></p>
                         <ul class="list-unstyled">
-                            ${system.cluster_nodes.map(node => `
-                                <li>
-                                    <i class="fas fa-server me-2"></i>
-                                    ${node.host}
-                                    <span class="badge ${node.status ? 'bg-success' : 'bg-danger'} ms-2">
-                                        ${node.status ? 'Online' : 'Offline'}
-                                    </span>
-                                </li>
-                            `).join('')}
+                            ${system.cluster_nodes.map(node => {
+                                const nodeHost = typeof node === 'string' ? node : node.host;
+                                const nodeStatus = typeof node === 'string' ? false : node.status;
+                                return `
+                                    <li>
+                                        <i class="fas fa-server me-2"></i>
+                                        ${nodeHost}
+                                        <span class="badge ${nodeStatus ? 'bg-success' : 'bg-danger'} ms-2">
+                                            ${nodeStatus ? 'Online' : 'Offline'}
+                                        </span>
+                                    </li>
+                                `;
+                            }).join('')}
                         </ul>
                     `;
                     clusterNodesDiv.innerHTML = nodesHtml;
@@ -797,17 +802,17 @@
                         <i class="fas fa-sync-alt loading-spinner" style="display: none;"></i>
                         Test Now
                     `;
-                    testBtn.onclick = () => testSystem(system._id);
+                    testBtn.onclick = () => testSystem(system._id.$oid);
                 }
                 
                 const editBtn = clone.querySelector('.edit-btn');
                 if (editBtn) {
-                    editBtn.onclick = () => editSystem(system._id);
+                    editBtn.onclick = () => editSystem(system._id.$oid);
                 }
                 
                 const deleteBtn = clone.querySelector('.delete-btn');
                 if (deleteBtn) {
-                    deleteBtn.onclick = () => deleteSystem(system._id);
+                    deleteBtn.onclick = () => deleteSystem(system._id.$oid);
                 }
                 
                 return clone;
@@ -1548,8 +1553,9 @@
             
             fetch('/api/systems')
                 .then(response => response.json())
-                .then(systems => {
-                    if (!Array.isArray(systems) || systems.length === 0) {
+                .then(data => {
+                    const systems = data.systems || [];
+                    if (systems.length === 0) {
                         systemsContainer.innerHTML = `
                             <div class="col-12 text-center">
                                 <p class="text-muted">No systems found. Add a system to get started.</p>
@@ -1602,7 +1608,7 @@
                 const card = clone.querySelector('.card');
                 if (!card) return null;
                 
-                card.setAttribute('data-system-id', system._id);
+                card.setAttribute('data-system-id', system._id.$oid);
                 
                 // Set system name and status
                 const systemName = clone.querySelector('.system-name');
@@ -1643,15 +1649,19 @@
                     const nodesHtml = `
                         <p class="mb-2"><strong>Cluster Nodes:</strong></p>
                         <ul class="list-unstyled">
-                            ${system.cluster_nodes.map(node => `
-                                <li>
-                                    <i class="fas fa-server me-2"></i>
-                                    ${node.host}
-                                    <span class="badge ${node.status ? 'bg-success' : 'bg-danger'} ms-2">
-                                        ${node.status ? 'Online' : 'Offline'}
-                                    </span>
-                                </li>
-                            `).join('')}
+                            ${system.cluster_nodes.map(node => {
+                                const nodeHost = typeof node === 'string' ? node : node.host;
+                                const nodeStatus = typeof node === 'string' ? false : node.status;
+                                return `
+                                    <li>
+                                        <i class="fas fa-server me-2"></i>
+                                        ${nodeHost}
+                                        <span class="badge ${nodeStatus ? 'bg-success' : 'bg-danger'} ms-2">
+                                            ${nodeStatus ? 'Online' : 'Offline'}
+                                        </span>
+                                    </li>
+                                `;
+                            }).join('')}
                         </ul>
                     `;
                     clusterNodesDiv.innerHTML = nodesHtml;
@@ -1664,19 +1674,9 @@
                         <i class="fas fa-sync-alt loading-spinner" style="display: none;"></i>
                         Test Now
                     `;
-                    testBtn.onclick = () => testSystem(system._id);
+                    testBtn.onclick = () => testSystem(system._id.$oid);
                 }
-                
-                const editBtn = clone.querySelector('.edit-btn');
-                if (editBtn) {
-                    editBtn.onclick = () => editSystem(system._id);
-                }
-                
-                const deleteBtn = clone.querySelector('.delete-btn');
-                if (deleteBtn) {
-                    deleteBtn.onclick = () => deleteSystem(system._id);
-                }
-                
+
                 return clone;
             } catch (error) {
                 console.error('Error creating system card:', error);

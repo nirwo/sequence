@@ -1,57 +1,33 @@
 version: '3.8'
 
 services:
-  mongodb:
-    image: mongo:latest
-    container_name: app_monitor_mongodb
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongodb_data:/data/db
-      - ./mongodb/init:/docker-entrypoint-initdb.d:ro
-    environment:
-      - MONGO_INITDB_ROOT_USERNAME=admin
-      - MONGO_INITDB_ROOT_PASSWORD=adminpassword
-      - MONGO_INITDB_DATABASE=app_monitor
-      - MONGODB_INITDB_SCRIPTS_ENABLED=true
-      - MONGODB_LOG_VERBOSITY=1
-    command: mongod --logpath /proc/1/fd/1 --logappend
-    healthcheck:
-      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/app_monitor --quiet
-      interval: 10s
-      timeout: 10s
-      retries: 5
-      start_period: 40s
-    networks:
-      - app_network
-
   app:
     build: .
-    container_name: app_monitor
     ports:
       - "5000:5000"
     environment:
-      - MONGO_URI=mongodb://admin:adminpassword@mongodb:27017/app_monitor?authSource=admin
-      - FLASK_HOST=0.0.0.0
-      - FLASK_PORT=5000
       - FLASK_ENV=development
+      - MONGO_URI=mongodb://mongodb:27017/app_monitor
+    volumes:
+      - .:/app
     depends_on:
-      mongodb:
-        condition: service_healthy
+      - mongodb
     networks:
       - app_network
     restart: unless-stopped
 
-  typescript:
-    image: node:18-slim
-    working_dir: /app
-    volumes:
-      - .:/app
-    command: bash -c "npm install && npm run watch"
+  mongodb:
+    image: mongo:latest
     ports:
-      - "3000:3000"
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - ./mongodb/init:/docker-entrypoint-initdb.d
+    environment:
+      - MONGO_INITDB_DATABASE=app_monitor
     networks:
       - app_network
+    restart: unless-stopped
 
 networks:
   app_network:
