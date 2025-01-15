@@ -1,48 +1,34 @@
-# Stage 1: Build TypeScript
-FROM node:18-slim as ts-builder
-
-WORKDIR /app
-
-COPY package*.json ./
-COPY tsconfig.json ./
-RUN npm install
-
-COPY static/js/*.ts ./static/js/
-RUN npm run build
-
-# Stage 2: Python application
 FROM python:3.9-slim
 
 WORKDIR /app
 
-# Install required utilities and create non-root user
-RUN apt-get update && \
-    apt-get install -y \
-    iputils-ping \
-    telnet \
-    nmap \
-    && rm -rf /var/lib/apt/lists/* && \
-    # Create non-root user
-    useradd -m -U appuser && \
-    # Give ping permissions to non-root user
-    chmod u+s /bin/ping && \
-    # Set proper permissions
+# Create a non-root user
+RUN useradd -m appuser && \
     chown -R appuser:appuser /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy TypeScript build output
-COPY --from=ts-builder /app/static/js/dist ./static/js/dist
-
-# Copy the rest of the application
-COPY . .
-RUN chown -R appuser:appuser /app
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    iputils-ping \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
 # Switch to non-root user
 USER appuser
 
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+RUN chown -R appuser:appuser /app
+
+# Expose port
 EXPOSE 5000
 
-# Use Gunicorn as the production server
-CMD ["gunicorn", "--config", "gunicorn_config.py", "app:app"]
+# Set environment variables
+ENV FLASK_APP=app.py
+ENV FLASK_ENV=development
+
+# Run the application
+CMD ["python", "-m", "flask", "run", "--host=0.0.0.0"]
