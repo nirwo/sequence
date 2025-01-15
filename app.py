@@ -219,68 +219,144 @@ def update_status():
 
 @app.route('/api/systems/import', methods=['POST'])
 def import_systems():
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file provided'}), 400
-        
-    file = request.files['file']
-    if not file.filename.endswith('.csv'):
-        return jsonify({'error': 'File must be a CSV'}), 400
-        
     try:
-        # Read CSV content
-        content = file.read().decode('utf-8')
-        csv_reader = csv.DictReader(io.StringIO(content))
+        if 'file' not in request.files:
+            return jsonify({"error": "No file provided"}), 400
         
-        systems = []
-        for row in csv_reader:
-            # Process cluster nodes if present
-            cluster_nodes = None
-            if row.get('cluster_nodes'):
-                nodes = [node.strip() for node in row['cluster_nodes'].split(';') if node.strip()]
-                if nodes:
-                    cluster_nodes = [{'host': node, 'status': False, 'last_check': None} for node in nodes]
-            
-            # Process shutdown sequence if present
-            shutdown_sequence = row.get('shutdown_sequence', '').strip() or 'N/A'
-            
-            # Convert db_port to integer if present
+        file = request.files['file']
+        if not file.filename.endswith('.csv'):
+            return jsonify({"error": "File must be a CSV"}), 400
+
+        # Read mapping from request
+        mapping = json.loads(request.form.get('mapping', '{}'))
+        if not mapping:
+            return jsonify({"error": "No field mapping provided"}), 400
+
+        # Read CSV file with UTF-8 encoding
+        csv_content = file.read().decode('utf-8-sig')  # Handle BOM if present
+        csv_reader = csv.DictReader(io.StringIO(csv_content))
+        
+        systems_added = 0
+        errors = []
+        
+        # Validate headers
+        if not csv_reader.fieldnames:
+            return jsonify({"error": "CSV file has no headers"}), 400
+
+        for row_num, row in enumerate(csv_reader, start=1):
             try:
-                db_port = int(row['db_port']) if row.get('db_port') else None
-            except ValueError:
-                db_port = None
-            
-            system = {
-                'name': row['name'],
-                'app_name': row.get('app_name', 'N/A'),
-                'target': row.get('target'),
-                'db_name': row.get('db_name', 'N/A'),
-                'db_type': row.get('db_type', 'N/A'),
-                'db_port': db_port,
-                'owner': row.get('owner', 'N/A'),
-                'shutdown_sequence': shutdown_sequence,
-                'check_type': row.get('check_type', 'ping'),
-                'cluster_nodes': cluster_nodes,
-                'created_at': datetime.now(),
-                'last_check': None,
-                'status': False,
-                'db_status': None,
-                'sequence_status': 'not_started',
-                'last_error': None
-            }
-            
-            systems.append(system)
+                # Create system dict with mapped fields
+                system = {}
+                
+                # Map fields according to user's mapping
+                for field, header in mapping.items():
+                    if header in row:
+                        value = row[header].strip()
+                        if value:  # Only add non-empty values
+                            system[field] = value
+
+                # Handle required fields
+                if not system.get('name'):
+                    errors.append(f"Row {row_num}: System Name is required")
+                    continue
+
+                # Check if system name already exists
+                existing_system = mongo.db.systems.find_one({"name": system['name']})
+                if existing_system:
+                    errors.append(f"Row {row_num}: System with name '{system['name']}' already exists")
+                    continue
+
+                # Set default values
+                system['created_at'] = datetime.now()
+                system['last_check'] = datetime.now()
+                system['status'] = False
+                system['sequence_status'] = "not_started"
+                system['http_status'] = False
+                system['http_error'] = ""
+                system['ping_status'] = False
+                system['ping_error'] = ""
+                system['db_status'] = False
+                system['last_error'] = ""
+
+                # Handle special fields
+                if 'check_type' in system:
+                    system['check_type'] = system['check_type'].lower()
+                    if system['check_type'] not in ['http', 'ping', 'both']:
+                        system['check_type'] = 'ping'
+                else:
+                    system['check_type'] = 'ping'
+
+                # Handle mount points (comma-separated)
+                if 'mount_points' in system:
+                    mount_points = [p.strip() for p in system['mount_points'].split(',')]
+                    system['mount_points'] = [p for p in mount_points if p]
+
+                # Handle shutdown sequence (semicolon-separated)
+                if 'shutdown_sequence' in system:
+                    sequence = [s.strip() for s in system['shutdown_sequence'].split(';')]
+                    system['shutdown_sequence'] = [s for s in sequence if s]
+
+                # Handle cluster nodes (semicolon-separated)
+                if 'cluster_nodes' in system:
+                    nodes = [n.strip() for n in system['cluster_nodes'].split(';')]
+                    nodes = [n for n in nodes if n]
+                    if nodes:
+                        system['cluster_nodes'] = [
+                            {
+                                'host': node,
+                                'status': False,
+                                'last_check': datetime.now(),
+                                'http_status': False,
+                                'http_error': "",
+                                'ping_status': False,
+                                'ping_error': ""
+                            }
+                            for node in nodes
+                        ]
+
+                # Handle database port
+                if 'db_port' in system:
+                    try:
+                        system['db_port'] = int(system['db_port'])
+                    except (ValueError, TypeError):
+                        system['db_port'] = None
+
+                # Set default values for optional fields
+                system.setdefault('app_name', 'N/A')
+                system.setdefault('db_name', 'N/A')
+                system.setdefault('db_type', 'N/A')
+                system.setdefault('owner', 'N/A')
+                system.setdefault('mount_points', [])
+                system.setdefault('shutdown_sequence', [])
+                system.setdefault('cluster_nodes', [])
+
+                # Validate target
+                if not system.get('target') and not system.get('cluster_nodes'):
+                    errors.append(f"Row {row_num}: Target URL/IP is required for non-cluster systems")
+                    continue
+
+                # Insert the system
+                mongo.db.systems.insert_one(system)
+                systems_added += 1
+
+            except Exception as e:
+                error_msg = f"Row {row_num}: {str(e)}"
+                print(f"Error processing row: {error_msg}")
+                errors.append(error_msg)
+
+        response = {
+            "message": f"Successfully imported {systems_added} systems",
+            "systems_added": systems_added
+        }
         
-        if not systems:
-            return jsonify({'error': 'No valid systems found in CSV'}), 400
-            
-        # Insert systems
-        result = mongo.db.systems.insert_many(systems)
-        return jsonify({
-            'message': f'Successfully imported {len(result.inserted_ids)} systems',
-            'imported_count': len(result.inserted_ids)
-        })
+        if errors:
+            response["warnings"] = errors
+
+        return jsonify(response)
+
     except Exception as e:
-        return jsonify({'error': f'Error importing systems: {str(e)}'}), 500
+        print(f"Error importing systems: {str(e)}")
+        return jsonify({"error": f"Error importing systems: {str(e)}"}), 500
 
 @app.route('/api/systems/export')
 def export_systems():
