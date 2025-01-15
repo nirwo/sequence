@@ -41,7 +41,7 @@ def add_system():
         
         # Set default values
         system['created_at'] = datetime.now()
-        system['last_check'] = None
+        system['last_check'] = datetime.now()  # Set initial last_check
         system['status'] = False
         
         # Handle empty or missing fields
@@ -58,22 +58,27 @@ def add_system():
         if not system.get('mount_points'):
             system['mount_points'] = None
         elif isinstance(system['mount_points'], str):
-            system['mount_points'] = [point.strip() for point in system['mount_points'].split(';') if point.strip()]
-            if not system['mount_points']:
-                system['mount_points'] = None
+            points = system['mount_points'].split(';')
+            system['mount_points'] = points if points else None
+        elif isinstance(system['mount_points'], list):
+            system['mount_points'] = system['mount_points'] if system['mount_points'] else None
 
         if not system.get('shutdown_sequence'):
             system['shutdown_sequence'] = None
         elif isinstance(system['shutdown_sequence'], str):
-            system['shutdown_sequence'] = [step.strip() for step in system['shutdown_sequence'].split(';') if step.strip()]
-            if not system['shutdown_sequence']:
-                system['shutdown_sequence'] = None
+            steps = system['shutdown_sequence'].split(';')
+            system['shutdown_sequence'] = steps if steps else None
+        elif isinstance(system['shutdown_sequence'], list):
+            system['shutdown_sequence'] = system['shutdown_sequence'] if system['shutdown_sequence'] else None
         
         # Handle cluster nodes
         if not system.get('cluster_nodes'):
             system['cluster_nodes'] = None
         elif isinstance(system['cluster_nodes'], str):
-            system['cluster_nodes'] = [node.strip() for node in system['cluster_nodes'].split(';') if node.strip()]
+            nodes = [node.strip() for node in system['cluster_nodes'].split(';') if node.strip()]
+            system['cluster_nodes'] = nodes if nodes else None
+        elif isinstance(system['cluster_nodes'], list):
+            system['cluster_nodes'] = [node for node in system['cluster_nodes'] if node.strip()]
             if not system['cluster_nodes']:
                 system['cluster_nodes'] = None
         

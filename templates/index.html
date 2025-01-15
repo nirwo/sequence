@@ -815,7 +815,7 @@
             const inputs = document.querySelectorAll('.shutdown-step-input');
             const steps = Array.from(inputs)
                 .map(input => input.value.trim())
-                .filter(value => value);
+                .filter(step => step);
             document.getElementById('shutdownSequenceValue').value = steps.join(';');
         }
 
@@ -922,43 +922,37 @@
                 system.db_type = null;
                 system.db_name = null;
             } else {
-                if (!system.db_type) system.db_type = null;
-                if (!system.db_name) system.db_name = null;
+                system.db_type = system.db_type || null;
+                system.db_name = system.db_name || null;
             }
 
             // Handle mount points
             if (!document.getElementById('hasMountPoints').checked) {
                 system.mount_points = null;
-            } else if (system.mount_points) {
-                const points = system.mount_points.split(';')
-                    .map(point => point.trim())
+            } else {
+                const mountPointInputs = document.querySelectorAll('.mount-point-input');
+                const points = Array.from(mountPointInputs)
+                    .map(input => input.value.trim())
                     .filter(point => point);
                 system.mount_points = points.length > 0 ? points : null;
-            } else {
-                system.mount_points = null;
             }
 
             // Handle shutdown sequence
             if (!document.getElementById('hasShutdownSequence').checked) {
                 system.shutdown_sequence = null;
-            } else if (system.shutdown_sequence) {
-                const steps = system.shutdown_sequence.split(';')
-                    .map(step => step.trim())
+            } else {
+                const shutdownInputs = document.querySelectorAll('.shutdown-step-input');
+                const steps = Array.from(shutdownInputs)
+                    .map(input => input.value.trim())
                     .filter(step => step);
                 system.shutdown_sequence = steps.length > 0 ? steps : null;
-            } else {
-                system.shutdown_sequence = null;
             }
 
             // Handle cluster nodes
-            if (system.cluster_nodes) {
-                const nodes = system.cluster_nodes.split(';')
-                    .map(node => node.trim())
-                    .filter(node => node);
-                system.cluster_nodes = nodes.length > 0 ? nodes : null;
-            } else {
-                system.cluster_nodes = null;
-            }
+            const clusterNodes = system.cluster_nodes ? system.cluster_nodes.split(';')
+                .map(node => node.trim())
+                .filter(node => node) : null;
+            system.cluster_nodes = clusterNodes && clusterNodes.length > 0 ? clusterNodes : null;
 
             // Set default check type
             system.check_type = system.check_type || 'ping';
