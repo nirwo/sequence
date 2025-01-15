@@ -542,7 +542,7 @@ def test_ping(host):
         
         # Ping command parameters
         param = '-n' if platform.system().lower() == 'windows' else '-c'
-        command = ['ping', param, '1', host]
+        command = ['/usr/bin/ping', param, '1', host]
         
         # Use subprocess.Popen to get output
         process = subprocess.Popen(
@@ -559,6 +559,17 @@ def test_ping(host):
         if stderr:
             print(f"Ping error for {host}:")
             print(stderr)
+            
+        if not success:
+            # Check if we can get more specific error from output
+            if "unknown host" in (stdout + stderr).lower():
+                return False, f"Unknown host: {host}"
+            elif "network is unreachable" in (stdout + stderr).lower():
+                return False, f"Network is unreachable for host: {host}"
+            elif "permission denied" in (stdout + stderr).lower():
+                return False, f"Permission denied when pinging {host}. Try running with sudo."
+            else:
+                return False, f"Host {host} is not responding. {stderr if stderr else stdout}"
             
         return success, stdout if success else f"Host {host} is not responding. {stderr if stderr else ''}"
     except Exception as e:
