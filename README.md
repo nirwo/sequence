@@ -122,6 +122,38 @@ docker-compose down -v
    - Shutdown Sequence
    - Cluster Nodes (if applicable)
 
+## CSV Import
+
+The application supports two methods of CSV import:
+
+1. Quick Import: Uses the example CSV format
+2. Mapped Import: Allows you to map any CSV format to the application's fields
+
+### Example CSV Format
+
+Download the example CSV template (`example_import.csv`) which contains the following fields:
+- System Name
+- Application Name
+- Check Type (ping/http)
+- Target URL/IP
+- Database Name
+- Database Type
+- Mount Points (semicolon-separated)
+- Owner
+- Shutdown Sequence
+- Cluster Nodes (comma-separated)
+
+### Custom CSV Import
+
+For custom CSV files:
+1. Click "Import" → "Map & Import CSV"
+2. Select your CSV file
+3. Preview the data
+4. Map your CSV columns to the application fields
+5. Click Import
+
+The mapping interface will attempt to automatically match fields with similar names, but you can adjust the mapping as needed. Fields can be skipped by selecting "-- Skip Field --" in the mapping dropdown.
+
 ## Monitoring Features
 
 - Status indicators (green for up, red for down)

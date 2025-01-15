@@ -5,100 +5,146 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Application Monitor</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         .status-badge {
-            width: 15px;
-            height: 15px;
-            border-radius: 50%;
             display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
             margin-right: 5px;
         }
         .status-up {
             background-color: #28a745;
-            box-shadow: 0 0 10px #28a745;
         }
         .status-down {
             background-color: #dc3545;
-            box-shadow: 0 0 10px #dc3545;
         }
-        .card {
-            transition: transform 0.2s;
-            margin-bottom: 1rem;
+        .system-actions {
+            white-space: nowrap;
         }
-        .card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        .table td {
+            vertical-align: middle;
         }
-        .system-card {
-            border-radius: 10px;
-        }
-        .last-check {
-            font-size: 0.8rem;
-            color: #6c757d;
-        }
-        
-        .wizard-steps {
-            position: relative;
-            margin-bottom: 30px;
-        }
-        
-        .step-indicator {
-            font-size: 14px;
-            color: #6c757d;
-            position: relative;
-            padding: 5px 10px;
-            background: #f8f9fa;
-            border-radius: 15px;
-        }
-        
-        .step-indicator.active {
-            color: #0d6efd;
-            font-weight: bold;
-            background: #e7f1ff;
-        }
-        
-        .step-indicator.completed {
-            color: #198754;
-            background: #d1e7dd;
-        }
-        
-        .progress {
-            height: 4px;
-            margin-bottom: 20px;
-        }
-        
-        .cluster-node .card {
-            border: 1px solid #dee2e6;
-            margin-bottom: 15px;
-        }
-        
-        .cluster-node .card:hover {
-            border-color: #0d6efd;
+        .cluster-nodes {
+            font-size: 0.85em;
+            color: #666;
         }
     </style>
 </head>
-<body class="bg-light">
+<body>
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-        <div class="container">
-            <a class="navbar-brand" href="#">
-                <i class="fas fa-desktop me-2"></i>Application Monitor
-            </a>
-            <div>
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">Application Monitor</a>
+            <div class="d-flex">
                 <button class="btn btn-primary me-2" data-bs-toggle="modal" data-bs-target="#wizardModal">
                     <i class="fas fa-plus me-2"></i>Add System
                 </button>
-                <button class="btn btn-secondary" onclick="document.getElementById('csvFile').click()">
-                    <i class="fas fa-file-import me-2"></i>Import CSV
-                </button>
+                <div class="dropdown">
+                    <button class="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                        <i class="fas fa-file-import me-2"></i>Import
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="#" onclick="document.getElementById('csvFile').click()">Quick Import CSV</a></li>
+                        <li><a class="dropdown-item" href="#" onclick="openCSVMapping()">Map & Import CSV</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="/example_import.csv" download>Download Example CSV</a></li>
+                    </ul>
+                </div>
                 <input type="file" id="csvFile" accept=".csv" style="display: none" onchange="importCSV(this)">
             </div>
         </div>
     </nav>
 
-    <div class="container mt-4">
-        <div id="systems-container" class="row">
-            <!-- Systems will be dynamically added here -->
+    <div class="container-fluid mt-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th style="width: 50px">Status</th>
+                                <th>System Name</th>
+                                <th>Application</th>
+                                <th>Type</th>
+                                <th>Target</th>
+                                <th>Database</th>
+                                <th>Owner</th>
+                                <th>Last Check</th>
+                                <th style="width: 120px">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="systems-container">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Modal -->
+    <div class="modal fade" id="editModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit System</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="editSystemForm" onsubmit="saveEditedSystem(event)">
+                        <div class="mb-3">
+                            <label class="form-label">System Name</label>
+                            <input type="text" class="form-control" name="name" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Application Name</label>
+                            <input type="text" class="form-control" name="app_name" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Check Type</label>
+                            <select class="form-select" name="check_type" required>
+                                <option value="http">HTTP</option>
+                                <option value="ping">Ping</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Target URL/IP</label>
+                            <input type="text" class="form-control" name="target">
+                            <small class="text-muted">Required for single node systems. For clusters, first node will be used if empty.</small>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Cluster Nodes</label>
+                            <input type="text" class="form-control" name="cluster_nodes">
+                            <small class="text-muted">Comma-separated list of nodes</small>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Database Name</label>
+                            <input type="text" class="form-control" name="db_name">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Database Type</label>
+                            <input type="text" class="form-control" name="db_type">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Mount Points</label>
+                            <input type="text" class="form-control" name="mount_points">
+                            <small class="text-muted">Comma-separated list</small>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Owner</label>
+                            <input type="text" class="form-control" name="owner">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Shutdown Sequence</label>
+                            <textarea class="form-control" name="shutdown_sequence" rows="3"></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary" form="editSystemForm">Save Changes</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -241,6 +287,41 @@
         </div>
     </div>
 
+    <!-- CSV Mapping Modal -->
+    <div class="modal fade" id="csvMappingModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Map CSV Fields</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Select CSV File</label>
+                        <input type="file" class="form-control" id="csvMappingFile" accept=".csv" onchange="previewCSV(this)">
+                    </div>
+                    
+                    <div id="csvPreview" class="d-none">
+                        <h6>Preview</h6>
+                        <div class="table-responsive mb-3">
+                            <table class="table table-sm">
+                                <thead id="csvPreviewHeader"></thead>
+                                <tbody id="csvPreviewBody"></tbody>
+                            </table>
+                        </div>
+                        
+                        <h6>Field Mapping</h6>
+                        <div id="fieldMapping" class="row g-3"></div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" onclick="importMappedCSV()">Import</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         let systems = [];
@@ -261,41 +342,112 @@
             container.innerHTML = '';
             
             systems.forEach(system => {
-                const card = document.createElement('div');
-                card.className = 'col-md-6 col-lg-4';
-                card.innerHTML = `
-                    <div class="card system-card">
-                        <div class="card-body">
-                            <div class="d-flex justify-content-between align-items-center mb-2">
-                                <h5 class="card-title mb-0">
-                                    <span class="status-badge ${system.status ? 'status-up' : 'status-down'}"></span>
-                                    ${system.name}
-                                </h5>
-                                <div>
-                                    <button class="btn btn-sm btn-primary" onclick="editSystem('${system._id}')">
-                                        <i class="fas fa-edit"></i>
-                                    </button>
-                                    <button class="btn btn-sm btn-danger" onclick="deleteSystem('${system._id}')">
-                                        <i class="fas fa-trash"></i>
-                                    </button>
-                                </div>
-                            </div>
-                            <p class="card-text">
-                                <strong>Application:</strong> ${system.app_name}<br>
-                                <strong>Type:</strong> ${system.check_type}<br>
-                                <strong>Target:</strong> ${system.target}<br>
-                                ${system.db_name ? `<strong>Database:</strong> ${system.db_name}<br>` : ''}
-                                <strong>Owner:</strong> ${system.owner}<br>
-                                ${system.cluster_nodes ? `<strong>Cluster Nodes:</strong> ${system.cluster_nodes}<br>` : ''}
-                            </p>
-                            <div class="last-check">
-                                Last checked: ${new Date(system.last_check).toLocaleString()}
-                            </div>
-                        </div>
-                    </div>
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>
+                        <span class="status-badge ${system.status ? 'status-up' : 'status-down'}"
+                              title="${system.status ? 'Online' : 'Offline'}"></span>
+                    </td>
+                    <td>
+                        <strong>${system.name}</strong>
+                        ${system.cluster_nodes ? 
+                            `<div class="cluster-nodes">Cluster: ${system.cluster_nodes.join(', ')}</div>` 
+                            : ''}
+                    </td>
+                    <td>${system.app_name}</td>
+                    <td>${system.check_type || '-'}</td>
+                    <td>${system.target || '-'}</td>
+                    <td>${system.db_name ? `${system.db_name} (${system.db_type || 'Unknown'})` : '-'}</td>
+                    <td>${system.owner || '-'}</td>
+                    <td><small>${new Date(system.last_check).toLocaleString()}</small></td>
+                    <td class="system-actions">
+                        <button class="btn btn-sm btn-primary" onclick="editSystem('${system._id}')" title="Edit">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="btn btn-sm btn-info" onclick="showShutdownSequence('${system._id}')" title="Shutdown Sequence">
+                            <i class="fas fa-power-off"></i>
+                        </button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteSystem('${system._id}')" title="Delete">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
                 `;
-                container.appendChild(card);
+                container.appendChild(row);
             });
+        }
+
+        function editSystem(systemId) {
+            const system = systems.find(s => s._id === systemId);
+            if (!system) return;
+
+            const form = document.getElementById('editSystemForm');
+            form.dataset.systemId = systemId;
+            
+            form.querySelector('[name="name"]').value = system.name || '';
+            form.querySelector('[name="app_name"]').value = system.app_name || '';
+            form.querySelector('[name="check_type"]').value = system.check_type || 'http';
+            form.querySelector('[name="target"]').value = system.target || '';
+            form.querySelector('[name="db_name"]').value = system.db_name || '';
+            form.querySelector('[name="db_type"]').value = system.db_type || '';
+            form.querySelector('[name="mount_points"]').value = system.mount_points || '';
+            form.querySelector('[name="owner"]').value = system.owner || '';
+            form.querySelector('[name="shutdown_sequence"]').value = system.shutdown_sequence || '';
+            form.querySelector('[name="cluster_nodes"]').value = system.cluster_nodes ? system.cluster_nodes.join(',') : '';
+
+            new bootstrap.Modal(document.getElementById('editModal')).show();
+        }
+
+        async function saveEditedSystem(event) {
+            event.preventDefault();
+            const form = document.getElementById('editSystemForm');
+            const systemId = form.dataset.systemId;
+            
+            const formData = {
+                name: form.querySelector('[name="name"]').value.trim(),
+                app_name: form.querySelector('[name="app_name"]').value.trim(),
+                check_type: form.querySelector('[name="check_type"]').value,
+                target: form.querySelector('[name="target"]').value.trim(),
+                db_name: form.querySelector('[name="db_name"]').value.trim(),
+                db_type: form.querySelector('[name="db_type"]').value.trim(),
+                mount_points: form.querySelector('[name="mount_points"]').value.trim(),
+                owner: form.querySelector('[name="owner"]').value.trim(),
+                shutdown_sequence: form.querySelector('[name="shutdown_sequence"]').value.trim(),
+                cluster_nodes: form.querySelector('[name="cluster_nodes"]').value.trim()
+            };
+
+            if (!formData.name || !formData.app_name) {
+                alert('System Name and Application Name are required');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/systems/${systemId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(formData)
+                });
+                
+                const data = await response.json();
+                if (data.error) {
+                    alert(data.error);
+                } else {
+                    bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
+                    await fetchSystems();
+                }
+            } catch (error) {
+                alert('Error updating system');
+            }
+        }
+
+        function showShutdownSequence(systemId) {
+            const system = systems.find(s => s._id === systemId);
+            if (system.shutdown_sequence) {
+                alert(`Shutdown Sequence for ${system.name}:\n\n${system.shutdown_sequence}`);
+            } else {
+                alert(`No shutdown sequence defined for ${system.name}`);
+            }
         }
 
         function updateProgressBar() {
@@ -437,39 +589,111 @@
             });
         }
 
-        function editSystem(systemId) {
-            const system = systems.find(s => s._id === systemId);
-            const form = document.getElementById('editSystemForm');
-            
-            for (let field in system) {
-                const input = form.elements[field];
-                if (input) {
-                    input.value = system[field];
-                }
-            }
-            
-            form.elements['system_id'].value = systemId;
-            new bootstrap.Modal(document.getElementById('editSystemModal')).show();
+        function openCSVMapping() {
+            document.getElementById('csvMappingFile').value = '';
+            document.getElementById('csvPreview').classList.add('d-none');
+            document.getElementById('fieldMapping').innerHTML = '';
+            new bootstrap.Modal(document.getElementById('csvMappingModal')).show();
         }
 
-        function updateSystem() {
-            const form = document.getElementById('editSystemForm');
-            const formData = new FormData(form);
-            const data = Object.fromEntries(formData.entries());
-            const systemId = data.system_id;
-            delete data.system_id;
-            
-            fetch(`/api/systems/${systemId}`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(data)
+        function previewCSV(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            fetch('/api/csv/preview', {
+                method: 'POST',
+                body: formData
             })
             .then(response => response.json())
-            .then(() => {
-                fetchSystems();
-                bootstrap.Modal.getInstance(document.getElementById('editSystemModal')).hide();
+            .then(data => {
+                if (data.error) {
+                    alert(data.error);
+                    return;
+                }
+
+                // Show preview
+                const previewDiv = document.getElementById('csvPreview');
+                previewDiv.classList.remove('d-none');
+
+                // Set up header
+                const headerRow = '<tr>' + data.headers.map(h => `<th>${h}</th>`).join('') + '</tr>';
+                document.getElementById('csvPreviewHeader').innerHTML = headerRow;
+
+                // Set up preview rows
+                const previewRows = data.preview_rows.map(row => 
+                    '<tr>' + row.map(cell => `<td>${cell}</td>`).join('') + '</tr>'
+                ).join('');
+                document.getElementById('csvPreviewBody').innerHTML = previewRows;
+
+                // Set up field mapping
+                const mappingDiv = document.getElementById('fieldMapping');
+                mappingDiv.innerHTML = data.available_fields.map(field => `
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label class="form-label">${field.label}</label>
+                            <select class="form-select" data-field="${field.id}">
+                                <option value="">-- Skip Field --</option>
+                                ${data.headers.map(h => `<option value="${h}">${h}</option>`).join('')}
+                            </select>
+                        </div>
+                    </div>
+                `).join('');
+
+                // Auto-map fields with matching names
+                data.available_fields.forEach(field => {
+                    const select = mappingDiv.querySelector(`select[data-field="${field.id}"]`);
+                    const matchingHeader = data.headers.find(h => 
+                        h.toLowerCase().replace(/[^a-z0-9]/g, '') === 
+                        field.label.toLowerCase().replace(/[^a-z0-9]/g, '')
+                    );
+                    if (matchingHeader) {
+                        select.value = matchingHeader;
+                    }
+                });
+            })
+            .catch(error => {
+                alert('Error previewing CSV file');
+            });
+        }
+
+        function importMappedCSV() {
+            const file = document.getElementById('csvMappingFile').files[0];
+            if (!file) {
+                alert('Please select a CSV file');
+                return;
+            }
+
+            // Get mapping
+            const mapping = {};
+            document.querySelectorAll('#fieldMapping select').forEach(select => {
+                if (select.value) {
+                    mapping[select.dataset.field] = select.value;
+                }
+            });
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('mapping', JSON.stringify(mapping));
+
+            fetch('/api/csv/import', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert(data.error);
+                } else {
+                    alert(data.message);
+                    fetchSystems();
+                    bootstrap.Modal.getInstance(document.getElementById('csvMappingModal')).hide();
+                }
+            })
+            .catch(error => {
+                alert('Error importing CSV file');
             });
         }
 
@@ -485,9 +709,8 @@
             }
         }
 
-        // Initial fetch and set up auto-refresh
+        // Initial load
         fetchSystems();
-        setInterval(fetchSystems, 60000);
     </script>
 </body>
 </html>
