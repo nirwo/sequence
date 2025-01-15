@@ -441,9 +441,10 @@ def import_mapped_csv():
 @app.route('/api/csv/template', methods=['GET'])
 def download_csv_template():
     try:
-        # Create a StringIO object to write CSV data
+        # Create a StringIO object to write CSV data with UTF-8 BOM
         output = io.StringIO()
-        writer = csv.writer(output)
+        output.write('\ufeff')  # UTF-8 BOM
+        writer = csv.writer(output, delimiter=',', quoting=csv.QUOTE_MINIMAL)
         
         # Write headers
         headers = [
@@ -453,7 +454,9 @@ def download_csv_template():
             'Target URL/IP',
             'Database Name',
             'Database Type',
+            'Database Port',
             'Owner',
+            'Mount Points',
             'Shutdown Sequence',
             'Cluster Nodes'
         ]
@@ -467,7 +470,9 @@ def download_csv_template():
             'http://example.com',
             'example_db',
             'postgres',
+            '5432',
             'John Doe',
+            '/mnt/data,/mnt/logs',
             'service nginx stop;service app stop',
             'node1.example.com;node2.example.com'
         ]
@@ -477,10 +482,10 @@ def download_csv_template():
         output.seek(0)
         return Response(
             output.getvalue(),
-            mimetype='text/csv',
+            mimetype='text/csv; charset=utf-8',
             headers={
                 'Content-Disposition': 'attachment; filename=systems_template.csv',
-                'Content-Type': 'text/csv'
+                'Content-Type': 'text/csv; charset=utf-8'
             }
         )
     except Exception as e:
