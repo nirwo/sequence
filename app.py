@@ -239,17 +239,20 @@ def import_systems():
                 file.seek(0)
                 # Try reading with current encoding
                 reader = csv.DictReader(TextIOWrapper(file, encoding=encoding))
-                csv_data = [row for row in reader]
+                csv_data = [row for row in reader if any(row.values())]  # Skip empty rows
                 if csv_data:
                     break
             except UnicodeDecodeError:
                 continue
+            except Exception as e:
+                print(f"Error reading CSV with {encoding} encoding: {str(e)}")
+                continue
         
         if not csv_data:
-            return jsonify({'error': 'Could not read CSV file with supported encodings', 'success': False})
+            return jsonify({'error': 'Could not read CSV file with supported encodings or file is empty', 'success': False})
         
         # Auto-map fields
-        field_mappings = auto_map_csv_fields(csv_data[0].keys())
+        field_mappings = auto_map_csv_fields(csv_data[0].keys() if csv_data else [])
         print(f"Field mappings: {field_mappings}")  # Debug print
         
         if not field_mappings:
@@ -264,10 +267,10 @@ def import_systems():
                 # Map fields using the auto-mapped fields and handle None values
                 system_data = {}
                 for key, value in row.items():
-                    if key in field_mappings:
+                    if key and key in field_mappings:  # Skip empty keys
                         mapped_key = field_mappings[key]
                         if value is not None:
-                            system_data[mapped_key] = value.strip()
+                            system_data[mapped_key] = str(value).strip()
                         else:
                             system_data[mapped_key] = ''
                 
@@ -943,6 +946,9 @@ def test_db_connection(host, port):
 
 def auto_map_csv_fields(csv_headers):
     """Auto map CSV headers to database fields."""
+    if not csv_headers:
+        return {}
+        
     field_mappings = {}
     db_fields = {
         'name': ['name', 'system_name', 'hostname'],
@@ -959,11 +965,12 @@ def auto_map_csv_fields(csv_headers):
     }
     
     for header in csv_headers:
-        header_lower = header.lower().strip()
-        for field, aliases in db_fields.items():
-            if header_lower in aliases or header_lower == field:
-                field_mappings[header] = field
-                break
+        if header:  # Skip empty headers
+            header_lower = str(header).lower().strip()
+            for field, aliases in db_fields.items():
+                if header_lower in aliases or header_lower == field:
+                    field_mappings[header] = field
+                    break
     
     return field_mappings
 
