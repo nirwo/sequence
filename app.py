@@ -11,7 +11,7 @@ import csv
 import io
 
 app = Flask(__name__)
-app.config["MONGO_URI"] = "mongodb://localhost:27017/app_monitor"
+app.config["MONGO_URI"] = os.getenv("MONGO_URI", "mongodb://localhost:27017/app_monitor")
 mongo = PyMongo(app)
 
 def check_status(target, check_type):

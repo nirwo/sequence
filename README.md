@@ -31,6 +31,64 @@ A web-based application monitoring system that helps track the status of applica
    sudo systemctl start mongod
    ```
 
+## Docker Installation
+
+The easiest way to run the application is using Docker Compose:
+
+1. Make sure you have Docker and Docker Compose installed
+2. Clone the repository
+3. Run the application stack:
+   ```bash
+   docker-compose up -d
+   ```
+4. The application will be available at:
+   ```
+   http://localhost:5000
+   ```
+
+### Docker Environment Variables
+
+- `MONGO_URI`: MongoDB connection string (default: mongodb://admin:adminpassword@mongodb:27017/app_monitor?authSource=admin)
+
+### Accessing MongoDB
+
+The MongoDB instance is accessible at:
+- Host: localhost
+- Port: 27017
+- Username: admin
+- Password: adminpassword
+- Database: app_monitor
+
+### MongoDB Initialization
+
+The MongoDB instance is initialized with:
+- Schema validation for the systems collection
+- Required indexes for optimal performance
+- Sample data (only added if the collection is empty)
+
+The initialization script is located in `mongodb/init/01-init.js` and will run automatically when the MongoDB container is first created. The script:
+1. Creates the `systems` collection with schema validation
+2. Sets up appropriate indexes
+3. Adds sample data if the collection is empty
+
+This initialization only happens when the MongoDB volume is first created. To force reinitialization:
+```bash
+docker-compose down -v  # Warning: This will delete all data
+docker-compose up -d
+```
+
+### Stopping the Application
+
+To stop the application:
+```bash
+docker-compose down
+```
+
+To stop the application and remove all data:
+```bash
+docker-compose down -v
+```
+
 ## Running the Application
 
 1. Start the application:
