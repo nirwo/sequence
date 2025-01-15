@@ -32,46 +32,12 @@ def index():
 def get_systems():
     try:
         systems = list(mongo.db.systems.find())
+        # Convert ObjectId to string for JSON serialization
         for system in systems:
-            # Convert ObjectId to string for JSON serialization
             system['_id'] = str(system['_id'])
-            
-            # Ensure all required fields have default values
-            system.setdefault('status', False)
-            system.setdefault('db_status', None)
-            system.setdefault('http_status', None)
-            system.setdefault('http_error', None)
-            system.setdefault('ping_status', None)
-            system.setdefault('ping_error', None)
-            system.setdefault('last_error', None)
-            system.setdefault('sequence_status', 'not_started')
-            
-            # Convert datetime objects to ISO format strings
-            if 'created_at' in system:
-                system['created_at'] = system['created_at'].isoformat()
-            if 'last_check' in system:
-                system['last_check'] = system['last_check'].isoformat() if system['last_check'] else None
-
-            # Handle cluster nodes
-            if 'cluster_nodes' in system and system['cluster_nodes']:
-                for node in system['cluster_nodes']:
-                    if isinstance(node, dict):
-                        if 'last_check' in node:
-                            node['last_check'] = node['last_check'].isoformat() if node['last_check'] else None
-                        node.setdefault('status', False)
-                        node.setdefault('http_status', None)
-                        node.setdefault('http_error', None)
-                        node.setdefault('ping_status', None)
-                        node.setdefault('ping_error', None)
-                    else:
-                        # Convert string node to dict format
-                        system['cluster_nodes'] = [{'host': n, 'status': False} for n in system['cluster_nodes']]
-                        break
-
-        return jsonify(systems)
+        return jsonify({'systems': systems})
     except Exception as e:
-        print(f"Error fetching systems: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/systems', methods=['POST'])
 def add_system():
