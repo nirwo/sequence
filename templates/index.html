@@ -107,6 +107,9 @@
                     </ul>
                 </div>
                 <input type="file" id="csvFile" accept=".csv" style="display: none" onchange="importCSV(this)">
+                <button id="refreshButton" class="btn btn-sm btn-primary" style="margin-left: 10px;">
+                    <i class="bi bi-arrow-clockwise"></i> Check All Systems
+                </button>
             </div>
         </div>
     </nav>
@@ -453,6 +456,9 @@
                     </td>
                     <td>
                         <div class="btn-group">
+                            <button class="btn btn-sm btn-primary" onclick="checkSystem('${systemId}')">
+                                <i class="bi bi-arrow-clockwise"></i>
+                            </button>
                             <button class="btn btn-sm btn-outline-primary" onclick="editSystem('${systemId}')" title="Edit">
                                 <i class="fas fa-edit"></i>
                             </button>
@@ -1132,6 +1138,86 @@
             setTimeout(() => {
                 toast.remove();
             }, duration);
+        }
+
+        // Add refresh button click handler
+        document.getElementById('refreshButton').addEventListener('click', function() {
+            fetch('/api/systems/check_all')
+                .then(response => response.json())
+                .then(results => {
+                    showToast('Systems check completed', 'success');
+                    fetchSystems(); // Refresh the table
+                })
+                .catch(error => {
+                    showToast('Error checking systems: ' + error.message, 'error');
+                });
+        });
+
+        // Add check system function
+        function checkSystem(systemId) {
+            fetch(`/api/systems/check/${systemId}`)
+                .then(response => response.json())
+                .then(result => {
+                    if (result.error) {
+                        showToast(result.error, 'error');
+                    } else {
+                        const message = result.status ? 
+                            'System is online' : 
+                            `System is offline${result.error ? ': ' + result.error : ''}`;
+                        showToast(message, result.status ? 'success' : 'warning');
+                        fetchSystems(); // Refresh the table
+                    }
+                })
+                .catch(error => {
+                    showToast('Error checking system: ' + error.message, 'error');
+                });
+        }
+
+        // Modify displaySystems to show last error
+        function displaySystems(systems) {
+            const tbody = document.querySelector('#systemsTable tbody');
+            tbody.innerHTML = '';
+
+            systems.forEach(system => {
+                const row = document.createElement('tr');
+                const statusClass = system.status ? 'bg-success' : 'bg-danger';
+                const statusText = system.status ? 'Online' : 'Offline';
+                const lastCheck = system.last_check ? new Date(system.last_check).toLocaleString() : 'Never';
+                const errorTooltip = system.last_error ? `data-bs-toggle="tooltip" title="${system.last_error}"` : '';
+                
+                row.innerHTML = `
+                    <td>${system.name}</td>
+                    <td>${system.app_name || 'N/A'}</td>
+                    <td>${system.check_type || 'ping'}</td>
+                    <td>${system.target || 'N/A'}</td>
+                    <td>${system.db_name || 'N/A'}</td>
+                    <td>${system.db_type || 'N/A'}</td>
+                    <td>${system.owner || 'N/A'}</td>
+                    <td>${system.shutdown_sequence || 'N/A'}</td>
+                    <td>${system.cluster_nodes ? system.cluster_nodes.join(', ') : 'N/A'}</td>
+                    <td>
+                        <span class="badge ${statusClass}" ${errorTooltip}>
+                            ${statusText}
+                        </span>
+                    </td>
+                    <td>${lastCheck}</td>
+                    <td>
+                        <button class="btn btn-sm btn-primary" onclick="checkSystem('${system._id}')">
+                            <i class="bi bi-arrow-clockwise"></i>
+                        </button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteSystem('${system._id}')">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+
+            // Initialize tooltips
+            var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
         }
 
         // Initialize

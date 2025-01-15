@@ -515,9 +515,29 @@ def test_http(url):
         if not url.startswith(('http://', 'https://')):
             url = f'http://{url}'
         
-        response = requests.get(url, timeout=10)
-        return response.status_code == 200
-    except RequestException:
+        # Try with verify=False to handle self-signed certificates
+        try:
+            response = requests.get(url, timeout=10, verify=False)
+        except:
+            # If failed with verify=False, try with verify=True
+            response = requests.get(url, timeout=10)
+        
+        # Consider any 2xx status code as success
+        return 200 <= response.status_code < 300
+    except RequestException as e:
+        print(f"HTTP test failed for {url}: {str(e)}")
+        # If http:// failed, try https://
+        if url.startswith('http://'):
+            try:
+                https_url = f"https://{url[7:]}"
+                print(f"Retrying with HTTPS: {https_url}")
+                response = requests.get(https_url, timeout=10, verify=False)
+                return 200 <= response.status_code < 300
+            except RequestException as e2:
+                print(f"HTTPS retry failed: {str(e2)}")
+        return False
+    except Exception as e:
+        print(f"Unexpected error in HTTP test for {url}: {str(e)}")
         return False
 
 def test_ping(host):
@@ -544,27 +564,41 @@ def check_system(system_id):
 
         status = False
         target = system.get('target')
+        error_message = None
         
         if target:
             if system.get('check_type') == 'http':
-                status = test_http(target)
+                try:
+                    status = test_http(target)
+                    if not status:
+                        error_message = "HTTP check failed - server not responding or invalid status code"
+                except Exception as e:
+                    error_message = f"HTTP check error: {str(e)}"
             else:  # default to ping
-                status = test_ping(target)
+                try:
+                    status = test_ping(target)
+                    if not status:
+                        error_message = "Ping failed - host not responding"
+                except Exception as e:
+                    error_message = f"Ping error: {str(e)}"
 
         # Update system status and last check time
+        update_data = {
+            'status': status,
+            'last_check': datetime.now()
+        }
+        if error_message:
+            update_data['last_error'] = error_message
+        
         mongo.db.systems.update_one(
             {'_id': ObjectId(system_id)},
-            {
-                '$set': {
-                    'status': status,
-                    'last_check': datetime.now()
-                }
-            }
+            {'$set': update_data}
         )
 
         return jsonify({
             'status': status,
-            'last_check': datetime.now().isoformat()
+            'last_check': datetime.now().isoformat(),
+            'error': error_message
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -578,28 +612,42 @@ def check_all_systems():
         for system in systems:
             status = False
             target = system.get('target')
+            error_message = None
             
             if target:
                 if system.get('check_type') == 'http':
-                    status = test_http(target)
+                    try:
+                        status = test_http(target)
+                        if not status:
+                            error_message = "HTTP check failed - server not responding or invalid status code"
+                    except Exception as e:
+                        error_message = f"HTTP check error: {str(e)}"
                 else:  # default to ping
-                    status = test_ping(target)
+                    try:
+                        status = test_ping(target)
+                        if not status:
+                            error_message = "Ping failed - host not responding"
+                    except Exception as e:
+                        error_message = f"Ping error: {str(e)}"
             
             # Update system status and last check time
+            update_data = {
+                'status': status,
+                'last_check': datetime.now()
+            }
+            if error_message:
+                update_data['last_error'] = error_message
+            
             mongo.db.systems.update_one(
                 {'_id': system['_id']},
-                {
-                    '$set': {
-                        'status': status,
-                        'last_check': datetime.now()
-                    }
-                }
+                {'$set': update_data}
             )
             
             results.append({
                 'id': str(system['_id']),
                 'name': system.get('name'),
-                'status': status
+                'status': status,
+                'error': error_message
             })
         
         return jsonify(results)
