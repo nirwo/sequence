@@ -2,18 +2,20 @@ version: '3.8'
 
 services:
   mongodb:
-    build: 
-      context: ./mongodb
-      dockerfile: Dockerfile
+    image: mongo:latest
     container_name: app_monitor_mongodb
     ports:
       - "27017:27017"
     volumes:
       - mongodb_data:/data/db
+      - ./mongodb/init:/docker-entrypoint-initdb.d:ro
     environment:
       - MONGO_INITDB_ROOT_USERNAME=admin
       - MONGO_INITDB_ROOT_PASSWORD=adminpassword
       - MONGO_INITDB_DATABASE=app_monitor
+      - MONGODB_INITDB_SCRIPTS_ENABLED=true
+      - MONGODB_LOG_VERBOSITY=1
+    command: mongod --logpath /proc/1/fd/1 --logappend
     healthcheck:
       test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/app_monitor --quiet
       interval: 10s
