@@ -277,13 +277,37 @@
                                 </select>
                             </div>
                             <div class="mb-3">
-                                <label class="form-label">Mount Points (comma-separated)</label>
-                                <input type="text" class="form-control" name="mount_points">
+                                <label class="form-label">Mount Points</label>
+                                <div id="mountPointsContainer">
+                                    <div class="input-group mb-2">
+                                        <input type="text" class="form-control mount-point-input" 
+                                               placeholder="/mnt/data"
+                                               pattern="^/[a-zA-Z0-9/_-]+$"
+                                               oninput="validateMountPoint(this)">
+                                        <button class="btn btn-outline-secondary" type="button" onclick="addMountPoint()">
+                                            <i class="bi bi-plus"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <input type="hidden" name="mount_points" id="mountPointsValue">
+                                <div class="form-text">Mount points must start with / and contain only letters, numbers, underscores, and hyphens</div>
+                                <div class="invalid-feedback">Invalid mount point format</div>
                             </div>
                             <div class="mb-3">
-                                <label class="form-label">Shutdown Sequence (semicolon-separated)</label>
-                                <input type="text" class="form-control" name="shutdown_sequence" placeholder="e.g., service nginx stop;service app stop">
-                                <div class="form-text">Enter commands in order, separated by semicolons</div>
+                                <label class="form-label">Shutdown Sequence</label>
+                                <div id="shutdownStepsContainer">
+                                    <div class="input-group mb-2">
+                                        <span class="input-group-text">Step 1</span>
+                                        <input type="text" class="form-control shutdown-step-input" 
+                                               placeholder="e.g., service nginx stop"
+                                               oninput="updateShutdownSequence()">
+                                        <button class="btn btn-outline-secondary" type="button" onclick="addShutdownStep()">
+                                            <i class="bi bi-plus"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <input type="hidden" name="shutdown_sequence" id="shutdownSequenceValue">
+                                <div class="form-text">Enter shutdown commands in the order they should be executed</div>
                             </div>
                         </div>
                     </div>
@@ -685,6 +709,80 @@
             }
         }
 
+        // Mount points handling
+        function validateMountPoint(input) {
+            const isValid = /^\/[a-zA-Z0-9/_-]+$/.test(input.value);
+            if (isValid) {
+                input.classList.remove('is-invalid');
+                input.classList.add('is-valid');
+            } else {
+                input.classList.remove('is-valid');
+                input.classList.add('is-invalid');
+            }
+            updateMountPoints();
+        }
+
+        function addMountPoint() {
+            const container = document.getElementById('mountPointsContainer');
+            const newGroup = document.createElement('div');
+            newGroup.className = 'input-group mb-2';
+            newGroup.innerHTML = `
+                <input type="text" class="form-control mount-point-input" 
+                       placeholder="/mnt/data"
+                       pattern="^/[a-zA-Z0-9/_-]+$"
+                       oninput="validateMountPoint(this)">
+                <button class="btn btn-outline-danger" type="button" onclick="this.closest('.input-group').remove(); updateMountPoints()">
+                    <i class="bi bi-trash"></i>
+                </button>
+            `;
+            container.appendChild(newGroup);
+        }
+
+        function updateMountPoints() {
+            const inputs = document.querySelectorAll('.mount-point-input');
+            const mountPoints = Array.from(inputs)
+                .map(input => input.value.trim())
+                .filter(value => value && /^\/[a-zA-Z0-9/_-]+$/.test(value));
+            document.getElementById('mountPointsValue').value = mountPoints.join(';');
+        }
+
+        // Shutdown sequence handling
+        function addShutdownStep() {
+            const container = document.getElementById('shutdownStepsContainer');
+            const stepNumber = container.children.length + 1;
+            const newGroup = document.createElement('div');
+            newGroup.className = 'input-group mb-2';
+            newGroup.innerHTML = `
+                <span class="input-group-text">Step ${stepNumber}</span>
+                <input type="text" class="form-control shutdown-step-input" 
+                       placeholder="e.g., service nginx stop"
+                       oninput="updateShutdownSequence()">
+                <button class="btn btn-outline-danger" type="button" onclick="removeShutdownStep(this)">
+                    <i class="bi bi-trash"></i>
+                </button>
+            `;
+            container.appendChild(newGroup);
+        }
+
+        function removeShutdownStep(button) {
+            button.closest('.input-group').remove();
+            // Renumber remaining steps
+            const container = document.getElementById('shutdownStepsContainer');
+            container.querySelectorAll('.input-group-text').forEach((span, index) => {
+                span.textContent = `Step ${index + 1}`;
+            });
+            updateShutdownSequence();
+        }
+
+        function updateShutdownSequence() {
+            const inputs = document.querySelectorAll('.shutdown-step-input');
+            const steps = Array.from(inputs)
+                .map(input => input.value.trim())
+                .filter(value => value);
+            document.getElementById('shutdownSequenceValue').value = steps.join(';');
+        }
+
+        // Modified submitWizard function
         function submitWizard() {
             const form = document.getElementById('addSystemWizardForm');
             if (!form) {
@@ -692,7 +790,7 @@
                 return;
             }
 
-            // Validate form
+            // Validate required fields
             const inputs = form.querySelectorAll('input[required], select[required]');
             let isValid = true;
             
@@ -704,8 +802,18 @@
                     input.classList.remove('is-invalid');
                 }
             });
+
+            // Validate mount points
+            const mountPoints = document.querySelectorAll('.mount-point-input');
+            mountPoints.forEach(input => {
+                if (input.value.trim() && !/^\/[a-zA-Z0-9/_-]+$/.test(input.value)) {
+                    input.classList.add('is-invalid');
+                    isValid = false;
+                }
+            });
             
             if (!isValid) {
+                showToast('Please correct the invalid fields', 'error');
                 return;
             }
 
@@ -713,12 +821,32 @@
             const formData = new FormData(form);
             const system = Object.fromEntries(formData.entries());
 
-            // Handle array fields
-            ['cluster_nodes', 'mount_points', 'shutdown_sequence'].forEach(field => {
-                if (system[field]) {
-                    system[field] = system[field].split(';').map(item => item.trim()).filter(item => item);
+            // Clean up empty fields
+            Object.keys(system).forEach(key => {
+                if (system[key] === '') {
+                    system[key] = null;
                 }
             });
+
+            // Handle array fields
+            ['mount_points', 'shutdown_sequence'].forEach(field => {
+                if (system[field]) {
+                    system[field] = system[field].split(';').filter(item => item.trim());
+                    if (system[field].length === 0) {
+                        system[field] = null;
+                    }
+                }
+            });
+
+            // Handle cluster nodes
+            if (system.cluster_nodes) {
+                system.cluster_nodes = system.cluster_nodes.split(';')
+                    .map(node => node.trim())
+                    .filter(node => node);
+                if (system.cluster_nodes.length === 0) {
+                    system.cluster_nodes = null;
+                }
+            }
 
             // Add system
             fetch('/api/systems', {
@@ -734,10 +862,8 @@
                     showToast(data.error, 'error');
                 } else {
                     showToast('System added successfully', 'success');
-                    // Reset form and close modal
                     form.reset();
                     bootstrap.Modal.getInstance(document.getElementById('addSystemWizardModal')).hide();
-                    // Refresh systems table
                     fetchSystems();
                 }
             })
@@ -753,10 +879,33 @@
             const form = document.getElementById('addSystemWizardForm');
             if (form) {
                 form.reset();
+                // Clear mount points and shutdown sequence containers
+                document.getElementById('mountPointsContainer').innerHTML = `
+                    <div class="input-group mb-2">
+                        <input type="text" class="form-control mount-point-input" 
+                               placeholder="/mnt/data"
+                               pattern="^/[a-zA-Z0-9/_-]+$"
+                               oninput="validateMountPoint(this)">
+                        <button class="btn btn-outline-secondary" type="button" onclick="addMountPoint()">
+                            <i class="bi bi-plus"></i>
+                        </button>
+                    </div>
+                `;
+                document.getElementById('shutdownStepsContainer').innerHTML = `
+                    <div class="input-group mb-2">
+                        <span class="input-group-text">Step 1</span>
+                        <input type="text" class="form-control shutdown-step-input" 
+                               placeholder="e.g., service nginx stop"
+                               oninput="updateShutdownSequence()">
+                        <button class="btn btn-outline-secondary" type="button" onclick="addShutdownStep()">
+                            <i class="bi bi-plus"></i>
+                        </button>
+                    </div>
+                `;
             }
             // Reset validation state
-            form.querySelectorAll('.is-invalid').forEach(input => {
-                input.classList.remove('is-invalid');
+            form.querySelectorAll('.is-invalid, .is-valid').forEach(input => {
+                input.classList.remove('is-invalid', 'is-valid');
             });
         });
 
