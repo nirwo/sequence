@@ -54,22 +54,17 @@ def add_system():
         system['db_type'] = system.get('db_type') or None
         system['owner'] = system.get('owner') or 'N/A'
         
-        # Handle array fields with proper defaults
-        if not system.get('mount_points'):
-            system['mount_points'] = None
-        elif isinstance(system['mount_points'], str):
-            points = system['mount_points'].split(';')
-            system['mount_points'] = points if points else None
-        elif isinstance(system['mount_points'], list):
-            system['mount_points'] = system['mount_points'] if system['mount_points'] else None
+        # Remove mount_points for now
+        if 'mount_points' in system:
+            del system['mount_points']
 
+        # Handle shutdown sequence as string
         if not system.get('shutdown_sequence'):
             system['shutdown_sequence'] = None
-        elif isinstance(system['shutdown_sequence'], str):
-            steps = system['shutdown_sequence'].split(';')
-            system['shutdown_sequence'] = steps if steps else None
         elif isinstance(system['shutdown_sequence'], list):
-            system['shutdown_sequence'] = system['shutdown_sequence'] if system['shutdown_sequence'] else None
+            system['shutdown_sequence'] = ';'.join(system['shutdown_sequence']) if system['shutdown_sequence'] else None
+        else:
+            system['shutdown_sequence'] = system['shutdown_sequence'].strip() or None
         
         # Handle cluster nodes
         if not system.get('cluster_nodes'):
@@ -224,29 +219,21 @@ def import_systems():
                     'db_type': row.get('Database Type', '').strip() or None,
                     'owner': row.get('Owner', '').strip() or None,
                     'created_at': datetime.now(),
-                    'last_check': None,
+                    'last_check': datetime.now(),
                     'status': False
                 }
 
-                # Handle mount points
-                mount_points = row.get('Mount Points', '').strip()
-                if mount_points:
-                    system['mount_points'] = [point.strip() for point in mount_points.split(';') if point.strip()]
-                else:
-                    system['mount_points'] = None
-
-                # Handle shutdown sequence
+                # Handle shutdown sequence as string
                 shutdown_sequence = row.get('Shutdown Sequence', '').strip()
-                if shutdown_sequence:
-                    system['shutdown_sequence'] = [step.strip() for step in shutdown_sequence.split(';') if step.strip()]
-                else:
-                    system['shutdown_sequence'] = None
+                system['shutdown_sequence'] = shutdown_sequence if shutdown_sequence else None
 
                 # Handle cluster nodes
                 cluster_nodes = row.get('Cluster Nodes', '').strip()
                 if cluster_nodes:
                     system['cluster_nodes'] = [node.strip() for node in cluster_nodes.split(';') if node.strip()]
-                    if not system['target'] and system['cluster_nodes']:
+                    if not system['cluster_nodes']:
+                        system['cluster_nodes'] = None
+                    elif not system['target']:
                         system['target'] = system['cluster_nodes'][0]
                 else:
                     system['cluster_nodes'] = None
@@ -337,7 +324,7 @@ def import_mapped_csv():
                 # Map fields according to provided mapping
                 system = {
                     'created_at': datetime.now(),
-                    'last_check': None,
+                    'last_check': datetime.now(),
                     'status': False
                 }
 
@@ -410,7 +397,6 @@ def download_csv_template():
             'Target URL/IP',
             'Database Name',
             'Database Type',
-            'Mount Points',
             'Owner',
             'Shutdown Sequence',
             'Cluster Nodes'
@@ -425,7 +411,6 @@ def download_csv_template():
             'http://example.com',
             'example_db',
             'postgres',
-            '/mnt/data;/mnt/logs',
             'John Doe',
             'service nginx stop;service app stop',
             'node1.example.com;node2.example.com'
@@ -460,7 +445,6 @@ def download_example_csv():
             'Target URL/IP',
             'Database Name',
             'Database Type',
-            'Mount Points',
             'Owner',
             'Shutdown Sequence',
             'Cluster Nodes'
@@ -477,7 +461,6 @@ def download_example_csv():
                 'http://example.com',
                 '',
                 '',
-                '/var/www/html;/var/log/nginx',
                 'John Doe',
                 'service nginx stop;service php-fpm stop',
                 ''
@@ -490,7 +473,6 @@ def download_example_csv():
                 '192.168.1.100',
                 'main_db',
                 'postgres',
-                '/var/lib/postgresql/data;/backup',
                 'Jane Smith',
                 'pg_ctl stop -D /var/lib/postgresql/data',
                 ''
@@ -503,7 +485,6 @@ def download_example_csv():
                 '192.168.1.200',
                 'app_db',
                 'mysql',
-                '/var/lib/mysql;/var/log/mysql',
                 'Mike Johnson',
                 'service haproxy stop;service mysql stop',
                 'node1.example.com;node2.example.com'

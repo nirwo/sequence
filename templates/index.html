@@ -181,11 +181,6 @@
                             <input type="text" class="form-control" name="db_type">
                         </div>
                         <div class="mb-3">
-                            <label class="form-label">Mount Points</label>
-                            <input type="text" class="form-control" name="mount_points">
-                            <small class="text-muted">Comma-separated list</small>
-                        </div>
-                        <div class="mb-3">
                             <label class="form-label">Owner</label>
                             <input type="text" class="form-control" name="owner">
                         </div>
@@ -287,32 +282,6 @@
                                 <div class="mb-3">
                                     <label class="form-label">Database Name</label>
                                     <input type="text" class="form-control" name="db_name" id="dbName">
-                                </div>
-                            </div>
-
-                            <!-- Mount Points Section -->
-                            <div class="mb-3">
-                                <div class="form-check mb-2">
-                                    <input class="form-check-input" type="checkbox" id="hasMountPoints" onchange="toggleMountPoints()">
-                                    <label class="form-check-label" for="hasMountPoints">
-                                        Add mount points
-                                    </label>
-                                </div>
-                                <div id="mountPointsSection" class="d-none">
-                                    <div id="mountPointsContainer">
-                                        <div class="input-group mb-2">
-                                            <input type="text" class="form-control mount-point-input" 
-                                                   placeholder="/mnt/data"
-                                                   pattern="^/[a-zA-Z0-9/_-]+$"
-                                                   oninput="validateMountPoint(this)">
-                                            <button class="btn btn-outline-secondary" type="button" onclick="addMountPoint()">
-                                                <i class="bi bi-plus"></i>
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <input type="hidden" name="mount_points" id="mountPointsValue">
-                                    <div class="form-text">Mount points must start with / and contain only letters, numbers, underscores, and hyphens</div>
-                                    <div class="invalid-feedback">Invalid mount point format</div>
                                 </div>
                             </div>
 
@@ -537,7 +506,6 @@
                 'target': system.target,
                 'db_name': system.db_name,
                 'db_type': system.db_type,
-                'mount_points': system.mount_points,
                 'owner': system.owner,
                 'shutdown_sequence': system.shutdown_sequence,
                 'cluster_nodes': system.cluster_nodes ? system.cluster_nodes.join(',') : ''
@@ -572,7 +540,6 @@
                 target: form.querySelector('[name="target"]').value.trim(),
                 db_name: form.querySelector('[name="db_name"]').value.trim(),
                 db_type: form.querySelector('[name="db_type"]').value.trim(),
-                mount_points: form.querySelector('[name="mount_points"]').value.trim(),
                 owner: form.querySelector('[name="owner"]').value.trim(),
                 shutdown_sequence: form.querySelector('[name="shutdown_sequence"]').value.trim(),
                 cluster_nodes: form.querySelector('[name="cluster_nodes"]').value.trim()
@@ -740,49 +707,6 @@
             }
         }
 
-        // Mount points handling
-        function validateMountPoint(input) {
-            if (!input.value.trim()) {
-                input.classList.remove('is-invalid', 'is-valid');
-                return true;
-            }
-            
-            const isValid = /^\/[a-zA-Z0-9/_-]+$/.test(input.value);
-            if (isValid) {
-                input.classList.remove('is-invalid');
-                input.classList.add('is-valid');
-            } else {
-                input.classList.remove('is-valid');
-                input.classList.add('is-invalid');
-            }
-            updateMountPoints();
-            return isValid;
-        }
-
-        function addMountPoint() {
-            const container = document.getElementById('mountPointsContainer');
-            const newGroup = document.createElement('div');
-            newGroup.className = 'input-group mb-2';
-            newGroup.innerHTML = `
-                <input type="text" class="form-control mount-point-input" 
-                       placeholder="/mnt/data"
-                       pattern="^/[a-zA-Z0-9/_-]+$"
-                       oninput="validateMountPoint(this)">
-                <button class="btn btn-outline-danger" type="button" onclick="this.closest('.input-group').remove(); updateMountPoints()">
-                    <i class="bi bi-trash"></i>
-                </button>
-            `;
-            container.appendChild(newGroup);
-        }
-
-        function updateMountPoints() {
-            const inputs = document.querySelectorAll('.mount-point-input');
-            const mountPoints = Array.from(inputs)
-                .map(input => input.value.trim())
-                .filter(value => value && /^\/[a-zA-Z0-9/_-]+$/.test(value));
-            document.getElementById('mountPointsValue').value = mountPoints.join(';');
-        }
-
         // Shutdown sequence handling
         function addShutdownStep() {
             const container = document.getElementById('shutdownStepsContainer');
@@ -816,7 +740,7 @@
             const steps = Array.from(inputs)
                 .map(input => input.value.trim())
                 .filter(step => step);
-            document.getElementById('shutdownSequenceValue').value = steps.join(';');
+            document.getElementById('shutdownSequenceValue').value = steps.length > 0 ? steps.join(';') : '';
         }
 
         // Toggle functions for optional sections
@@ -828,27 +752,6 @@
             if (!hasDatabase) {
                 document.getElementById('dbType').value = '';
                 document.getElementById('dbName').value = '';
-            }
-        }
-
-        function toggleMountPoints() {
-            const hasMountPoints = document.getElementById('hasMountPoints').checked;
-            const mountPointsSection = document.getElementById('mountPointsSection');
-            mountPointsSection.classList.toggle('d-none', !hasMountPoints);
-            
-            if (!hasMountPoints) {
-                document.getElementById('mountPointsValue').value = '';
-                document.getElementById('mountPointsContainer').innerHTML = `
-                    <div class="input-group mb-2">
-                        <input type="text" class="form-control mount-point-input" 
-                               placeholder="/mnt/data"
-                               pattern="^/[a-zA-Z0-9/_-]+$"
-                               oninput="validateMountPoint(this)">
-                        <button class="btn btn-outline-secondary" type="button" onclick="addMountPoint()">
-                            <i class="bi bi-plus"></i>
-                        </button>
-                    </div>
-                `;
             }
         }
 
@@ -893,16 +796,6 @@
                     input.classList.remove('is-invalid');
                 }
             });
-
-            // Validate mount points if enabled
-            if (document.getElementById('hasMountPoints').checked) {
-                const mountPoints = document.querySelectorAll('.mount-point-input');
-                mountPoints.forEach(input => {
-                    if (input.value.trim() && !validateMountPoint(input)) {
-                        isValid = false;
-                    }
-                });
-            }
             
             if (!isValid) {
                 showToast('Please correct the invalid fields', 'error');
@@ -926,17 +819,6 @@
                 system.db_name = system.db_name || null;
             }
 
-            // Handle mount points
-            if (!document.getElementById('hasMountPoints').checked) {
-                system.mount_points = null;
-            } else {
-                const mountPointInputs = document.querySelectorAll('.mount-point-input');
-                const points = Array.from(mountPointInputs)
-                    .map(input => input.value.trim())
-                    .filter(point => point);
-                system.mount_points = points.length > 0 ? points : null;
-            }
-
             // Handle shutdown sequence
             if (!document.getElementById('hasShutdownSequence').checked) {
                 system.shutdown_sequence = null;
@@ -945,7 +827,7 @@
                 const steps = Array.from(shutdownInputs)
                     .map(input => input.value.trim())
                     .filter(step => step);
-                system.shutdown_sequence = steps.length > 0 ? steps : null;
+                system.shutdown_sequence = steps.length > 0 ? steps.join(';') : null;
             }
 
             // Handle cluster nodes
@@ -991,11 +873,9 @@
                 
                 // Reset all toggleable sections
                 document.getElementById('hasDatabase').checked = false;
-                document.getElementById('hasMountPoints').checked = false;
                 document.getElementById('hasShutdownSequence').checked = false;
                 
                 toggleDatabaseFields();
-                toggleMountPoints();
                 toggleShutdownSequence();
             }
             // Reset validation state
@@ -1053,7 +933,6 @@
                     { id: 'target', label: 'Target URL/IP', required: true },
                     { id: 'db_name', label: 'Database Name', required: false },
                     { id: 'db_type', label: 'Database Type', required: false },
-                    { id: 'mount_points', label: 'Mount Points', required: false },
                     { id: 'owner', label: 'Owner', required: false },
                     { id: 'shutdown_sequence', label: 'Shutdown Sequence', required: false },
                     { id: 'cluster_nodes', label: 'Cluster Nodes', required: false }
