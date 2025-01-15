@@ -1,3 +1,8 @@
+// Switch to admin database first to authenticate
+db = db.getSiblingDB('admin');
+db.auth('root', 'rootpassword');
+
+// Switch to app database
 db = db.getSiblingDB('app_monitor');
 
 // Create collections if they don't exist
