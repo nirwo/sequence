@@ -51,6 +51,10 @@ db.createUser({
         {
             role: "readWrite",
             db: "app_monitor"
+        },
+        {
+            role: "dbAdmin",
+            db: "app_monitor"
         }
     ]
 });
