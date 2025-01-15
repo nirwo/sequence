@@ -35,13 +35,14 @@ def index():
 def get_systems():
     try:
         print("Attempting to fetch systems from database...")  # Debug log
+        
         # Test MongoDB connection first
         try:
             mongo.db.command('ping')
         except Exception as e:
             print(f"MongoDB connection error: {str(e)}")
             return jsonify({'error': 'Database connection error', 'systems': []}), 500
-        
+
         # Get all systems with proper error handling
         try:
             systems = list(mongo.db.systems.find())
@@ -49,11 +50,7 @@ def get_systems():
         except Exception as e:
             print(f"Error querying systems: {str(e)}")
             return jsonify({'error': 'Error querying systems', 'systems': []}), 500
-            
-        if not systems:
-            print("No systems found in database")
-            return jsonify({'systems': []})
-            
+
         # Convert ObjectId to string for JSON serialization
         for system in systems:
             system['_id'] = str(system['_id'])
@@ -64,18 +61,16 @@ def get_systems():
                 system['last_check'] = system['last_check'].isoformat()
             # Ensure all systems have required fields with defaults
             system['status'] = system.get('status', False)
-            system['last_check'] = system.get('last_check', datetime.now())
-            system['sequence_status'] = system.get('sequence_status', 'not_started')
+            system['last_check'] = system.get('last_check', datetime.now().isoformat())
             system['last_error'] = system.get('last_error', '')
-            # Handle target field
-            if 'target' not in system:
-                system['target'] = system.get('name', 'unknown')
-        
+            system['sequence_status'] = system.get('sequence_status', 'not_started')
+
         print(f"Successfully processed {len(systems)} systems")
         return jsonify({'systems': systems})
+
     except Exception as e:
-        print(f"Error fetching systems: {str(e)}")  # Debug log
-        return jsonify({"error": f"Failed to fetch systems: {str(e)}"}), 500
+        print(f"Error in get_systems: {str(e)}")  # Debug log
+        return jsonify({'error': str(e), 'systems': []}), 500
 
 @app.route('/api/systems', methods=['POST'])
 def add_system():
