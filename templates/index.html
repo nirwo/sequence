@@ -8,27 +8,101 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         .status-badge {
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-weight: bold;
             display: inline-block;
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            margin-right: 5px;
+            min-width: 80px;
+            text-align: center;
         }
-        .status-up {
+
+        .status-badge.online {
             background-color: #28a745;
+            color: white;
         }
-        .status-down {
+
+        .status-badge.offline {
             background-color: #dc3545;
+            color: white;
         }
-        .system-actions {
-            white-space: nowrap;
+
+        .card {
+            margin-bottom: 1rem;
+            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
         }
-        .table td {
+
+        .card-header {
+            background-color: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .badge {
+            font-size: 0.875rem;
+            padding: 0.375rem 0.5rem;
+            min-width: 40px;
+        }
+
+        .list-group-item {
+            border-left: none;
+            border-right: none;
+        }
+
+        .list-group-item:first-child {
+            border-top: none;
+        }
+
+        .list-group-item:last-child {
+            border-bottom: none;
+        }
+
+        #systemsTable th {
+            background-color: #f8f9fa;
+            border-bottom: 2px solid #dee2e6;
+        }
+
+        #systemsTable td {
             vertical-align: middle;
         }
+
+        .btn-group-sm > .btn, .btn-sm {
+            padding: 0.25rem 0.5rem;
+            margin: 0.125rem;
+        }
+
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1050;
+        }
+
+        .sequence-status {
+            width: 120px;
+            font-size: 0.875rem;
+            padding: 0.25rem;
+        }
+
         .cluster-nodes {
-            font-size: 0.85em;
-            color: #666;
+            font-size: 0.875rem;
+            color: #6c757d;
+            margin-top: 0.25rem;
+        }
+
+        .cluster-node {
+            display: inline-block;
+            margin-right: 0.5rem;
+            padding: 0.125rem 0.25rem;
+            border-radius: 0.25rem;
+            background-color: #f8f9fa;
+        }
+
+        .error-message {
+            color: #dc3545;
+            font-size: 0.875rem;
+        }
+
+        .table-responsive {
+            margin-bottom: 1rem;
         }
         
         .toast-container {
@@ -167,7 +241,7 @@
                                 <th onclick="sortTable(2)" style="cursor: pointer;">Target <i class="fas fa-sort"></i></th>
                                 <th onclick="sortTable(3)" style="cursor: pointer;">DB Name <i class="fas fa-sort"></i></th>
                                 <th onclick="sortTable(4)" style="cursor: pointer;">Status <i class="fas fa-sort"></i></th>
-                                <th onclick="sortTable(5)" style="cursor: pointer;">Sequence <i class="fas fa-sort"></i></th>
+                                <th onclick="sortTable(5)" style="cursor: pointer;">Last Check <i class="fas fa-sort"></i></th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -563,124 +637,67 @@
         function createSystemRow(system) {
             const row = document.createElement('tr');
             const systemId = system._id.$oid || system._id;
-            
-            // Prepare test results display
-            let statusHtml = '';
-            let testResults = [];
-            
-            // Main target tests
-            if (system.target) {
-                if (system.check_type === 'http' || system.check_type === 'both') {
-                    testResults.push({
-                        type: 'HTTP',
-                        target: system.target,
-                        status: system.http_status,
-                        error: system.http_error
-                    });
-                }
-                if (system.check_type === 'ping' || system.check_type === 'both') {
-                    testResults.push({
-                        type: 'Ping',
-                        target: system.target,
-                        status: system.ping_status,
-                        error: system.ping_error
-                    });
-                }
-            }
-            
-            // Cluster nodes tests
-            if (system.cluster_nodes && Array.isArray(system.cluster_nodes)) {
-                system.cluster_nodes.forEach(node => {
-                    if (system.check_type === 'http' || system.check_type === 'both') {
-                        testResults.push({
-                            type: 'HTTP',
-                            target: node.host,
-                            status: node.http_status,
-                            error: node.http_error
-                        });
-                    }
-                    if (system.check_type === 'ping' || system.check_type === 'both') {
-                        testResults.push({
-                            type: 'Ping',
-                            target: node.host,
-                            status: node.ping_status,
-                            error: node.ping_error
-                        });
-                    }
-                });
-            }
-            
-            // Build status HTML
-            statusHtml = `
-                <div class="status-container">
-                    <span class="status-badge ${system.status ? 'online' : 'offline'}"
-                          title="${system.last_error || (system.status ? 'System is online' : 'System is offline')}">
-                        ${system.status ? 'Online' : 'Offline'}
-                    </span>
-                    <div class="test-results mt-2">
-                        ${testResults.map(test => `
-                            <div class="test-result">
-                                <small>
-                                    ${test.type} (${test.target}): 
-                                    <span class="badge ${test.status ? 'bg-success' : 'bg-danger'}"
-                                          title="${test.error || (test.status ? 'Test passed' : 'Test failed')}">
-                                        ${test.status ? 'Pass' : 'Fail'}
-                                    </span>
-                                </small>
-                            </div>
-                        `).join('')}
-                    </div>
-                    ${system.db_status !== null ? `
-                        <div class="db-status mt-2">
-                            <small title="Database Status">DB: 
-                                <span class="status-badge ${system.db_status ? 'online' : 'offline'}">
-                                    ${system.db_status ? 'Online' : 'Offline'}
-                                </span>
-                            </small>
-                        </div>
-                    ` : ''}
-                </div>
-            `;
+            const lastCheck = system.last_check ? new Date(system.last_check).toLocaleString() : 'Never';
             
             row.innerHTML = `
-                <td>${system.name || 'N/A'}</td>
+                <td>${system.name || 'Unknown'}</td>
                 <td>${system.app_name || 'N/A'}</td>
                 <td>
                     ${system.target || 'N/A'}
-                    ${system.cluster_nodes && Array.isArray(system.cluster_nodes) ? 
-                        `<br><small>Cluster Nodes: ${system.cluster_nodes.map(node => 
-                            node.host || node).join(', ')}</small>` 
-                        : ''}
+                    ${system.cluster_nodes ? `
+                        <div class="cluster-nodes">
+                            ${Array.isArray(system.cluster_nodes) ? 
+                                system.cluster_nodes.map(node => {
+                                    const nodeHost = typeof node === 'string' ? node : node.host;
+                                    const nodeStatus = typeof node === 'string' ? false : node.status;
+                                    return `
+                                        <span class="cluster-node ${nodeStatus ? 'bg-success text-white' : 'bg-danger text-white'}">
+                                            ${nodeHost}
+                                        </span>
+                                    `;
+                                }).join('') 
+                                : ''
+                            }
+                        </div>
+                    ` : ''}
                 </td>
                 <td>${system.db_name || 'N/A'}</td>
-                <td>${statusHtml}</td>
                 <td>
-                    <select class="form-control sequence-status" 
-                            onchange="updateSequenceStatus('${systemId}', this.value)"
-                            aria-label="Update sequence status">
-                        <option value="not_started" ${system.sequence_status === 'not_started' ? 'selected' : ''}>Not Started</option>
-                        <option value="in_progress" ${system.sequence_status === 'in_progress' ? 'selected' : ''}>In Progress</option>
-                        <option value="completed" ${system.sequence_status === 'completed' ? 'selected' : ''}>Completed</option>
-                    </select>
+                    <span class="status-badge ${system.status ? 'online' : 'offline'}"
+                          data-bs-toggle="tooltip" 
+                          title="${system.last_error || (system.status ? 'System is online' : 'System is offline')}">
+                        ${system.status ? 'Online' : 'Offline'}
+                    </span>
+                    ${system.last_error ? `
+                        <div class="error-message mt-1">
+                            <small>${system.last_error}</small>
+                        </div>
+                    ` : ''}
                 </td>
+                <td>${lastCheck}</td>
                 <td>
-                    <button class="btn btn-sm btn-success" onclick="checkSystem('${systemId}')" 
-                            title="Test system connectivity and services"
-                            aria-label="Trigger system test">
-                        <i class="fas fa-sync-alt"></i> Trigger Test
-                    </button>
-                    <button class="btn btn-sm btn-info" onclick="editSystem('${systemId}')"
-                            title="Edit system configuration"
-                            aria-label="Edit system">
-                        <i class="fas fa-edit"></i> Edit
-                    </button>
-                    <button class="btn btn-sm btn-danger" onclick="deleteSystem('${systemId}')"
-                            title="Delete this system"
-                            aria-label="Delete system">
-                        <i class="fas fa-trash"></i> Delete
-                    </button>
+                    <div class="btn-group btn-group-sm" role="group">
+                        <button class="btn btn-success" onclick="checkSystem('${systemId}')"
+                                data-bs-toggle="tooltip" title="Test system connectivity and services">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                        <button class="btn btn-info" onclick="editSystem('${systemId}')"
+                                data-bs-toggle="tooltip" title="Edit system configuration">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="btn btn-danger" onclick="deleteSystem('${systemId}')"
+                                data-bs-toggle="tooltip" title="Delete this system">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
                 </td>
             `;
+
+            // Initialize tooltips for the new row
+            row.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+                new bootstrap.Tooltip(el);
+            });
+
             return row;
         }
 
@@ -721,13 +738,6 @@
                 if (column === 4) { // Status column
                     aValue = a.cells[column].querySelector('.status-badge').classList.contains('online');
                     bValue = b.cells[column].querySelector('.status-badge').classList.contains('online');
-                }
-                
-                // Handle sequence column specially
-                if (column === 5) { // Sequence column
-                    const sequenceOrder = {'not_started': 0, 'in_progress': 1, 'completed': 2};
-                    aValue = sequenceOrder[a.cells[column].querySelector('select').value];
-                    bValue = sequenceOrder[b.cells[column].querySelector('select').value];
                 }
                 
                 if (aValue < bValue) return -1 * sortDirection;
