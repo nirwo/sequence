@@ -8,12 +8,14 @@ from ping3 import ping
 import os
 import csv
 import io
+from io import TextIOWrapper
 import json
 from bson import ObjectId, json_util
 import subprocess
 import platform
 from requests.exceptions import RequestException
 import socket
+from pymongo.errors import DuplicateKeyError
 
 app = Flask(__name__, static_url_path='/static', static_folder='static')
 app.config["MONGO_URI"] = os.getenv("MONGO_URI", "mongodb://localhost:27017/app_monitor")
@@ -236,7 +238,7 @@ def import_systems():
                 # Reset file pointer
                 file.seek(0)
                 # Try reading with current encoding
-                csv_data = list(csv.DictReader(io.TextIOWrapper(file, encoding=encoding)))
+                csv_data = list(csv.DictReader(TextIOWrapper(file, encoding=encoding)))
                 break
             except UnicodeDecodeError:
                 continue
@@ -247,6 +249,9 @@ def import_systems():
         # Auto-map fields
         field_mappings = auto_map_csv_fields(csv_data[0].keys())
         
+        if not field_mappings:
+            return jsonify({'error': 'Could not map CSV fields to database fields', 'success': False})
+        
         # Process each row
         success_count = 0
         error_messages = []
@@ -254,7 +259,14 @@ def import_systems():
         for row in csv_data:
             try:
                 # Map fields using the auto-mapped fields
-                system_data = {field_mappings[key]: value for key, value in row.items() if key in field_mappings}
+                system_data = {field_mappings[key]: value.strip() if value else value 
+                             for key, value in row.items() 
+                             if key in field_mappings and value}
+                
+                # Validate required fields
+                if not system_data.get('name'):
+                    error_messages.append(f"Skipped row: Missing required field 'name'")
+                    continue
                 
                 # Set default values and convert string lists to actual lists
                 system_data = set_default_values(system_data)
@@ -285,58 +297,6 @@ def import_systems():
         
     except Exception as e:
         return jsonify({'error': f'Error importing systems: {str(e)}', 'success': False})
-
-def auto_map_csv_fields(csv_headers):
-    """Auto map CSV headers to database fields."""
-    field_mappings = {}
-    db_fields = [
-        'name', 'app_name', 'target', 'db_name', 'db_type', 'db_port',
-        'owner', 'shutdown_sequence', 'check_type', 'cluster_nodes', 'mount_points'
-    ]
-    
-    for header in csv_headers:
-        # Convert header to lowercase and remove spaces for matching
-        normalized_header = header.lower().replace(' ', '_')
-        if normalized_header in db_fields:
-            field_mappings[header] = normalized_header
-    
-    return field_mappings
-
-def set_default_values(system_data):
-    """Set default values for missing fields."""
-    defaults = {
-        'db_name': 'N/A',
-        'db_type': 'N/A',
-        'db_port': None,
-        'owner': 'System Admin',
-        'shutdown_sequence': [],
-        'mount_points': [],
-        'cluster_nodes': [],
-        'created_at': datetime.utcnow(),
-        'last_check': datetime.utcnow(),
-        'status': False,
-        'sequence_status': 'not_started',
-        'http_status': False,
-        'http_error': '',
-        'ping_status': False,
-        'ping_error': '',
-        'db_status': False,
-        'last_error': ''
-    }
-    
-    for key, value in defaults.items():
-        if key not in system_data or not system_data[key]:
-            system_data[key] = value
-    
-    # Convert string lists to actual lists
-    for field in ['shutdown_sequence', 'mount_points', 'cluster_nodes']:
-        if isinstance(system_data[field], str):
-            # Split by semicolon or comma
-            items = system_data[field].split(';') if ';' in system_data[field] else system_data[field].split(',')
-            # Clean up items
-            system_data[field] = [item.strip() for item in items if item.strip()]
-    
-    return system_data
 
 @app.route('/api/systems/export')
 def export_systems():
@@ -969,6 +929,58 @@ def test_db_connection(host, port):
             return {'success': False, 'message': f"Port {port} is closed on {host}"}
     except Exception as e:
         return {'success': False, 'message': f"Error checking port {port} on {host}: {str(e)}"}
+
+def auto_map_csv_fields(csv_headers):
+    """Auto map CSV headers to database fields."""
+    field_mappings = {}
+    db_fields = [
+        'name', 'app_name', 'target', 'db_name', 'db_type', 'db_port',
+        'owner', 'shutdown_sequence', 'check_type', 'cluster_nodes', 'mount_points'
+    ]
+    
+    for header in csv_headers:
+        # Convert header to lowercase and remove spaces for matching
+        normalized_header = header.lower().replace(' ', '_')
+        if normalized_header in db_fields:
+            field_mappings[header] = normalized_header
+    
+    return field_mappings
+
+def set_default_values(system_data):
+    """Set default values for missing fields."""
+    defaults = {
+        'db_name': 'N/A',
+        'db_type': 'N/A',
+        'db_port': None,
+        'owner': 'System Admin',
+        'shutdown_sequence': [],
+        'mount_points': [],
+        'cluster_nodes': [],
+        'created_at': datetime.utcnow(),
+        'last_check': datetime.utcnow(),
+        'status': False,
+        'sequence_status': 'not_started',
+        'http_status': False,
+        'http_error': '',
+        'ping_status': False,
+        'ping_error': '',
+        'db_status': False,
+        'last_error': ''
+    }
+    
+    for key, value in defaults.items():
+        if key not in system_data or not system_data[key]:
+            system_data[key] = value
+    
+    # Convert string lists to actual lists
+    for field in ['shutdown_sequence', 'mount_points', 'cluster_nodes']:
+        if isinstance(system_data[field], str):
+            # Split by semicolon or comma
+            items = system_data[field].split(';') if ';' in system_data[field] else system_data[field].split(',')
+            # Clean up items
+            system_data[field] = [item.strip() for item in items if item.strip()]
+    
+    return system_data
 
 if __name__ == '__main__':
     status_thread = threading.Thread(target=update_status)
