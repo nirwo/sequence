@@ -339,6 +339,12 @@
                         <p class="mb-2"><strong>Database:</strong> <span class="database"></span></p>
                         <p class="mb-2"><strong>Owner:</strong> <span class="owner"></span></p>
                     </div>
+                    <div class="test-results mt-3">
+                        <!-- Test results will be displayed here -->
+                    </div>
+                    <div class="cluster-nodes mt-3">
+                        <!-- Cluster nodes will be displayed here -->
+                    </div>
                 </div>
                 <div class="card-footer">
                     <div class="btn-group float-end">
@@ -1533,6 +1539,117 @@
                 });
         }
 
+        // Test a system
+        function testSystem(systemId) {
+            console.log('Testing system:', systemId);
+            const card = document.querySelector(`[data-system-id="${systemId}"]`);
+            if (!card) {
+                console.error('Card not found for system:', systemId);
+                return;
+            }
+
+            // Disable test button and show loading state
+            const testBtn = card.querySelector('.test-btn');
+            const btnIcon = testBtn.querySelector('i');
+            testBtn.disabled = true;
+            btnIcon.className = 'fas fa-spinner fa-spin';
+
+            fetch(`/api/systems/test/${systemId}`, {
+                method: 'POST'
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('Test results:', data);
+                
+                // Update status badge
+                const statusBadge = card.querySelector('.status-badge');
+                if (statusBadge) {
+                    statusBadge.className = `status-badge ${data.status ? 'online' : 'offline'}`;
+                    statusBadge.textContent = data.status ? 'Online' : 'Offline';
+                }
+
+                // Update test results
+                const testResultsDiv = card.querySelector('.test-results');
+                if (testResultsDiv && data.messages && data.messages.length > 0) {
+                    const resultsHtml = data.messages.map(msg => {
+                        const icon = msg.type === 'http' ? 'globe' : 
+                                   msg.type === 'ping' ? 'network-wired' : 
+                                   'database';
+                        return `
+                            <span class="badge ${msg.status ? 'bg-success' : 'bg-danger'} me-1" 
+                                  title="${msg.message || (msg.status ? 'Success' : 'Failed')}">
+                                <i class="fas fa-${icon}"></i> ${msg.type.toUpperCase()}
+                            </span>
+                        `;
+                    }).join('');
+                    testResultsDiv.innerHTML = `
+                        <div class="d-flex align-items-center">
+                            <strong class="me-2">Test Results:</strong>
+                            ${resultsHtml}
+                        </div>
+                    `;
+                }
+
+                // Update cluster nodes
+                const clusterNodesDiv = card.querySelector('.cluster-nodes');
+                if (clusterNodesDiv && data.nodes && data.nodes.length > 0) {
+                    const nodesHtml = data.nodes.map(node => {
+                        const nodeResults = node.messages.map(msg => {
+                            const icon = msg.type === 'http' ? 'globe' : 'network-wired';
+                            return `
+                                <span class="badge ${msg.status ? 'bg-success' : 'bg-danger'} me-1" 
+                                      title="${msg.message || (msg.status ? 'Success' : 'Failed')}">
+                                    <i class="fas fa-${icon}"></i>
+                                </span>
+                            `;
+                        }).join('');
+                        
+                        return `
+                            <div class="d-flex align-items-center mb-2">
+                                <i class="fas fa-server me-2"></i>
+                                <span class="me-2">${node.host}</span>
+                                ${nodeResults}
+                            </div>
+                        `;
+                    }).join('');
+                    
+                    clusterNodesDiv.innerHTML = `
+                        <div class="mt-3">
+                            <strong>Cluster Nodes:</strong>
+                            ${nodesHtml}
+                        </div>
+                    `;
+                }
+
+                showToast('System test completed', 'success');
+            })
+            .catch(error => {
+                console.error('Error testing system:', error);
+                showToast('Error testing system: ' + error.message, 'error');
+                
+                // Show error in test results
+                const testResultsDiv = card.querySelector('.test-results');
+                if (testResultsDiv) {
+                    testResultsDiv.innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-triangle"></i> 
+                            Error: ${error.message}
+                        </div>
+                    `;
+                }
+            })
+            .finally(() => {
+                // Reset button state
+                testBtn.disabled = false;
+                btnIcon.className = 'fas fa-sync-alt';
+            });
+        }
+        
         // Initialize page
         fetchSystems();
         

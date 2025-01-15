@@ -17,6 +17,7 @@ from requests.exceptions import RequestException
 import socket
 from pymongo.errors import DuplicateKeyError
 import sys
+import re
 
 app = Flask(__name__, static_url_path='/static', static_folder='static')
 
@@ -877,76 +878,111 @@ def test_http(url):
         # Try with verify=False to handle self-signed certificates
         try:
             response = requests.get(url, timeout=10, verify=False)
-        except:
-            # If failed with verify=False, try with verify=True
-            response = requests.get(url, timeout=10)
-        
-        # Consider any 2xx status code as success
-        return {'success': 200 <= response.status_code < 300, 'message': response.text}
-    except RequestException as e:
-        print(f"HTTP test failed for {url}: {str(e)}")
-        # If http:// failed, try https://
-        if url.startswith('http://'):
-            try:
-                https_url = f"https://{url[7:]}"
-                print(f"Retrying with HTTPS: {https_url}")
-                response = requests.get(https_url, timeout=10, verify=False)
-                return {'success': 200 <= response.status_code < 300, 'message': response.text}
-            except RequestException as e2:
-                print(f"HTTPS retry failed: {str(e2)}")
-        return {'success': False, 'message': str(e)}
+            return {
+                'success': 200 <= response.status_code < 300,
+                'message': f"HTTP {response.status_code}: {response.reason}"
+            }
+        except RequestException as e:
+            # If http:// failed, try https://
+            if url.startswith('http://'):
+                try:
+                    https_url = f"https://{url[7:]}"
+                    print(f"Retrying with HTTPS: {https_url}")
+                    response = requests.get(https_url, timeout=10, verify=False)
+                    return {
+                        'success': 200 <= response.status_code < 300,
+                        'message': f"HTTPS {response.status_code}: {response.reason}"
+                    }
+                except RequestException as e2:
+                    print(f"HTTPS retry failed: {str(e2)}")
+                    return {'success': False, 'message': f"Both HTTP and HTTPS failed: {str(e2)}"}
+            return {'success': False, 'message': f"HTTP request failed: {str(e)}"}
     except Exception as e:
         print(f"Unexpected error in HTTP test for {url}: {str(e)}")
-        return {'success': False, 'message': str(e)}
+        return {'success': False, 'message': f"Error: {str(e)}"}
 
 def test_ping(host):
     """Test if a host is reachable via ping."""
     try:
         # First try to resolve the hostname
         try:
-            socket.gethostbyname(host)
+            ip = socket.gethostbyname(host)
         except socket.gaierror:
-            return False, "Name or service not known (DNS resolution failed)"
+            return {'success': False, 'message': "DNS resolution failed"}
 
-        # If hostname resolves, try to ping
+        # Try nmap first for more detailed info
         try:
-            response_time = ping(host, timeout=2)
-            if response_time is None or response_time is False:
-                return False, "Host not responding to ping"
-            return True, f"Response time: {response_time:.2f}ms"
-        except Exception as e:
-            return False, f"Ping failed: {str(e)}"
+            command = ['/usr/bin/nmap', '-sn', '-Pn', host]
+            process = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=True
+            )
+            stdout, stderr = process.communicate()
+            
+            if "Host is up" in stdout:
+                # Extract latency if available
+                latency_match = re.search(r'latency ([0-9.]+)s', stdout)
+                latency = float(latency_match.group(1)) * 1000 if latency_match else None
+                return {
+                    'success': True,
+                    'message': f"Host is up" + (f" (latency: {latency:.1f}ms)" if latency else "")
+                }
+        except:
+            pass  # Fall back to ping if nmap fails
+
+        # Fallback to ping
+        response_time = ping(host, timeout=2)
+        if response_time is not None and response_time is not False:
+            return {
+                'success': True,
+                'message': f"Response time: {response_time:.1f}ms"
+            }
+        return {
+            'success': False,
+            'message': "Host not responding to ping"
+        }
 
     except Exception as e:
-        return False, f"Error during ping test: {str(e)}"
+        return {'success': False, 'message': f"Error: {str(e)}"}
 
 def test_db_connection(host, port):
     try:
         # Try nmap first for detailed port info
-        command = ['/usr/bin/nmap', '-p', str(port), '-Pn', host]
-        process = subprocess.Popen(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            universal_newlines=True
-        )
-        stdout, stderr = process.communicate()
-        
-        if "open" in stdout.lower():
-            return {'success': True, 'message': "Port is open"}
+        try:
+            command = ['/usr/bin/nmap', '-p', str(port), '-sV', '-Pn', host]
+            process = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=True
+            )
+            stdout, stderr = process.communicate()
             
-        # Fallback to telnet
+            if "open" in stdout.lower():
+                # Try to extract service info
+                service_match = re.search(rf'{port}/tcp\s+open\s+([^\n]+)', stdout)
+                service_info = service_match.group(1) if service_match else "unknown"
+                return {
+                    'success': True,
+                    'message': f"Port {port} is open ({service_info})"
+                }
+        except:
+            pass  # Fall back to socket test if nmap fails
+            
+        # Fallback to socket test
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(2)
-        result = sock.connect_ex((host, port))
+        result = sock.connect_ex((host, int(port)))
         sock.close()
         
         if result == 0:
-            return {'success': True, 'message': "Port is open"}
+            return {'success': True, 'message': f"Port {port} is open"}
         else:
-            return {'success': False, 'message': f"Port {port} is closed on {host}"}
+            return {'success': False, 'message': f"Port {port} is closed"}
     except Exception as e:
-        return {'success': False, 'message': f"Error checking port {port} on {host}: {str(e)}"}
+        return {'success': False, 'message': f"Error checking port {port}: {str(e)}"}
 
 def auto_map_csv_fields(csv_headers):
     """Auto map CSV headers to database fields."""
