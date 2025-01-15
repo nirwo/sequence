@@ -4,92 +4,140 @@ db = db.getSiblingDB('app_monitor');
 // Drop existing collections to start fresh
 db.systems.drop();
 
-// Create the systems collection with validation
+// Create collection with schema validation
 db.createCollection('systems', {
     validator: {
         $jsonSchema: {
             bsonType: "object",
-            required: ["name", "created_at"],
+            required: ["name", "target"],
             properties: {
                 name: {
                     bsonType: "string",
-                    description: "Server name - required"
+                    description: "System name - required"
                 },
                 app_name: {
-                    bsonType: ["string", "null"],
-                    description: "Application name - optional"
+                    bsonType: "string",
+                    description: "Application name"
                 },
                 check_type: {
-                    bsonType: "string",
                     enum: ["http", "ping", "both"],
-                    description: "Type of health check - defaults to ping"
+                    description: "Type of check to perform"
                 },
                 target: {
-                    bsonType: ["string", "null"],
-                    description: "Target URL or IP address"
+                    bsonType: "string",
+                    description: "Target host/URL - required"
                 },
                 db_name: {
-                    bsonType: ["string", "null"],
-                    description: "Database name - optional"
+                    bsonType: "string",
+                    description: "Database name"
                 },
                 db_type: {
-                    bsonType: ["string", "null"],
-                    description: "Database type - optional"
+                    bsonType: "string",
+                    description: "Database type"
                 },
                 db_port: {
-                    bsonType: ["int", "null"],
-                    description: "Database port - optional"
+                    bsonType: "int",
+                    description: "Database port"
+                },
+                mount_points: {
+                    bsonType: "array",
+                    items: {
+                        bsonType: "string"
+                    },
+                    description: "Mount points to check"
                 },
                 owner: {
-                    bsonType: ["string", "null"],
-                    description: "System owner - optional"
+                    bsonType: "string",
+                    description: "System owner"
                 },
                 shutdown_sequence: {
-                    bsonType: ["string", "null"],
-                    description: "Shutdown sequence steps - optional"
-                },
-                sequence_status: {
-                    bsonType: ["string", "null"],
-                    enum: ["not_started", "in_progress", "completed", null],
-                    description: "Status of shutdown/startup sequence"
+                    bsonType: "array",
+                    items: {
+                        bsonType: "string"
+                    },
+                    description: "Shutdown sequence commands"
                 },
                 cluster_nodes: {
-                    bsonType: ["array", "null"],
+                    bsonType: "array",
                     items: {
-                        bsonType: "object",
-                        required: ["host"],
-                        properties: {
-                            host: {
+                        oneOf: [
+                            {
                                 bsonType: "string",
-                                description: "Node hostname or IP"
+                                description: "Simple node host"
                             },
-                            status: {
-                                bsonType: "bool",
-                                description: "Node status"
-                            },
-                            last_check: {
-                                bsonType: ["date", "null"],
-                                description: "Last node check timestamp"
+                            {
+                                bsonType: "object",
+                                required: ["host"],
+                                properties: {
+                                    host: {
+                                        bsonType: "string",
+                                        description: "Node hostname"
+                                    },
+                                    status: {
+                                        bsonType: "bool",
+                                        description: "Node status"
+                                    },
+                                    http_status: {
+                                        bsonType: "bool",
+                                        description: "HTTP check status"
+                                    },
+                                    http_error: {
+                                        bsonType: "string",
+                                        description: "HTTP check error"
+                                    },
+                                    ping_status: {
+                                        bsonType: "bool",
+                                        description: "Ping check status"
+                                    },
+                                    ping_error: {
+                                        bsonType: "string",
+                                        description: "Ping check error"
+                                    },
+                                    last_check: {
+                                        bsonType: "date",
+                                        description: "Last check timestamp"
+                                    }
+                                }
                             }
-                        }
+                        ]
                     },
-                    description: "List of cluster nodes"
+                    description: "Cluster node information"
                 },
                 created_at: {
                     bsonType: "date",
-                    description: "Creation timestamp - required"
+                    description: "Creation timestamp"
                 },
                 last_check: {
                     bsonType: ["date", "null"],
-                    description: "Last health check timestamp"
+                    description: "Last check timestamp"
                 },
                 status: {
                     bsonType: "bool",
-                    description: "Current system status"
+                    description: "Overall system status"
+                },
+                sequence_status: {
+                    enum: ["not_started", "in_progress", "completed"],
+                    description: "Sequence status"
+                },
+                http_status: {
+                    bsonType: ["bool", "null"],
+                    description: "HTTP check status"
+                },
+                http_error: {
+                    bsonType: ["string", "null"],
+                    description: "HTTP check error"
+                },
+                ping_status: {
+                    bsonType: ["bool", "null"],
+                    description: "Ping check status"
+                },
+                ping_error: {
+                    bsonType: ["string", "null"],
+                    description: "Ping check error"
                 },
                 db_status: {
                     bsonType: ["bool", "null"],
-                    description: "Database connection status"
+                    description: "Database check status"
                 },
                 last_error: {
                     bsonType: ["string", "null"],
@@ -122,7 +170,14 @@ db.systems.insertMany([
         shutdown_sequence: ["service nginx stop", "service app stop"],
         created_at: new Date(),
         last_check: null,
-        status: false
+        status: false,
+        sequence_status: "not_started",
+        http_status: null,
+        http_error: null,
+        ping_status: null,
+        ping_error: null,
+        db_status: null,
+        last_error: null
     },
     {
         name: "dbserver01",
@@ -135,7 +190,14 @@ db.systems.insertMany([
         shutdown_sequence: ["service postgresql stop"],
         created_at: new Date(),
         last_check: null,
-        status: false
+        status: false,
+        sequence_status: "not_started",
+        http_status: null,
+        http_error: null,
+        ping_status: null,
+        ping_error: null,
+        db_status: null,
+        last_error: null
     },
     {
         name: "app-cluster",
@@ -147,10 +209,45 @@ db.systems.insertMany([
         mount_points: ["/mnt/app/data"],
         owner: "Mike Johnson",
         shutdown_sequence: ["service haproxy stop", "service app stop"],
-        cluster_nodes: ["app01.example.com", "app02.example.com", "app03.example.com"],
+        cluster_nodes: [
+            {
+                host: "app01.example.com",
+                status: false,
+                http_status: null,
+                http_error: null,
+                ping_status: null,
+                ping_error: null,
+                last_check: null
+            },
+            {
+                host: "app02.example.com",
+                status: false,
+                http_status: null,
+                http_error: null,
+                ping_status: null,
+                ping_error: null,
+                last_check: null
+            },
+            {
+                host: "app03.example.com",
+                status: false,
+                http_status: null,
+                http_error: null,
+                ping_status: null,
+                ping_error: null,
+                last_check: null
+            }
+        ],
         created_at: new Date(),
         last_check: null,
-        status: false
+        status: false,
+        sequence_status: "not_started",
+        http_status: null,
+        http_error: null,
+        ping_status: null,
+        ping_error: null,
+        db_status: null,
+        last_error: null
     }
 ]);
 
