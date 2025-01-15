@@ -238,8 +238,10 @@ def import_systems():
                 # Reset file pointer
                 file.seek(0)
                 # Try reading with current encoding
-                csv_data = list(csv.DictReader(TextIOWrapper(file, encoding=encoding)))
-                break
+                reader = csv.DictReader(TextIOWrapper(file, encoding=encoding))
+                csv_data = [row for row in reader]
+                if csv_data:
+                    break
             except UnicodeDecodeError:
                 continue
         
@@ -248,6 +250,7 @@ def import_systems():
         
         # Auto-map fields
         field_mappings = auto_map_csv_fields(csv_data[0].keys())
+        print(f"Field mappings: {field_mappings}")  # Debug print
         
         if not field_mappings:
             return jsonify({'error': 'Could not map CSV fields to database fields', 'success': False})
@@ -258,10 +261,17 @@ def import_systems():
         
         for row in csv_data:
             try:
-                # Map fields using the auto-mapped fields
-                system_data = {field_mappings[key]: value.strip() if value else value 
-                             for key, value in row.items() 
-                             if key in field_mappings and value}
+                # Map fields using the auto-mapped fields and handle None values
+                system_data = {}
+                for key, value in row.items():
+                    if key in field_mappings:
+                        mapped_key = field_mappings[key]
+                        if value is not None:
+                            system_data[mapped_key] = value.strip()
+                        else:
+                            system_data[mapped_key] = ''
+                
+                print(f"Mapped data: {system_data}")  # Debug print
                 
                 # Validate required fields
                 if not system_data.get('name'):
@@ -296,6 +306,7 @@ def import_systems():
         })
         
     except Exception as e:
+        print(f"Import error: {str(e)}")  # Debug print
         return jsonify({'error': f'Error importing systems: {str(e)}', 'success': False})
 
 @app.route('/api/systems/export')
@@ -933,16 +944,26 @@ def test_db_connection(host, port):
 def auto_map_csv_fields(csv_headers):
     """Auto map CSV headers to database fields."""
     field_mappings = {}
-    db_fields = [
-        'name', 'app_name', 'target', 'db_name', 'db_type', 'db_port',
-        'owner', 'shutdown_sequence', 'check_type', 'cluster_nodes', 'mount_points'
-    ]
+    db_fields = {
+        'name': ['name', 'system_name', 'hostname'],
+        'app_name': ['app_name', 'application_name', 'app'],
+        'target': ['target', 'host', 'url', 'address'],
+        'db_name': ['db_name', 'database_name', 'database'],
+        'db_type': ['db_type', 'database_type'],
+        'db_port': ['db_port', 'database_port', 'port'],
+        'owner': ['owner', 'team', 'responsible'],
+        'shutdown_sequence': ['shutdown_sequence', 'shutdown_steps'],
+        'check_type': ['check_type', 'monitoring_type', 'type'],
+        'cluster_nodes': ['cluster_nodes', 'nodes'],
+        'mount_points': ['mount_points', 'mounts']
+    }
     
     for header in csv_headers:
-        # Convert header to lowercase and remove spaces for matching
-        normalized_header = header.lower().replace(' ', '_')
-        if normalized_header in db_fields:
-            field_mappings[header] = normalized_header
+        header_lower = header.lower().strip()
+        for field, aliases in db_fields.items():
+            if header_lower in aliases or header_lower == field:
+                field_mappings[header] = field
+                break
     
     return field_mappings
 
