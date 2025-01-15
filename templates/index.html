@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Application Monitor</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet">
+    <style>
+        .status-badge {
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 5px;
+        }
+        .status-up {
+            background-color: #28a745;
+            box-shadow: 0 0 10px #28a745;
+        }
+        .status-down {
+            background-color: #dc3545;
+            box-shadow: 0 0 10px #dc3545;
+        }
+        .card {
+            transition: transform 0.2s;
+            margin-bottom: 1rem;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        .system-card {
+            border-radius: 10px;
+        }
+        .last-check {
+            font-size: 0.8rem;
+            color: #6c757d;
+        }
+        
+        .wizard-steps {
+            position: relative;
+            margin-bottom: 30px;
+        }
+        
+        .step-indicator {
+            font-size: 14px;
+            color: #6c757d;
+            position: relative;
+            padding: 5px 10px;
+            background: #f8f9fa;
+            border-radius: 15px;
+        }
+        
+        .step-indicator.active {
+            color: #0d6efd;
+            font-weight: bold;
+            background: #e7f1ff;
+        }
+        
+        .step-indicator.completed {
+            color: #198754;
+            background: #d1e7dd;
+        }
+        
+        .progress {
+            height: 4px;
+            margin-bottom: 20px;
+        }
+        
+        .cluster-node .card {
+            border: 1px solid #dee2e6;
+            margin-bottom: 15px;
+        }
+        
+        .cluster-node .card:hover {
+            border-color: #0d6efd;
+        }
+    </style>
+</head>
+<body class="bg-light">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-desktop me-2"></i>Application Monitor
+            </a>
+            <div>
+                <button class="btn btn-primary me-2" data-bs-toggle="modal" data-bs-target="#wizardModal">
+                    <i class="fas fa-plus me-2"></i>Add System
+                </button>
+                <button class="btn btn-secondary" onclick="document.getElementById('csvFile').click()">
+                    <i class="fas fa-file-import me-2"></i>Import CSV
+                </button>
+                <input type="file" id="csvFile" accept=".csv" style="display: none" onchange="importCSV(this)">
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div id="systems-container" class="row">
+            <!-- Systems will be dynamically added here -->
+        </div>
+    </div>
+
+    <!-- Wizard Modal -->
+    <div class="modal fade" id="wizardModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Add New System</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="wizard">
+                        <div class="wizard-steps mb-4">
+                            <div class="progress">
+                                <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+                            </div>
+                            <div class="d-flex justify-content-between mt-2">
+                                <span class="step-indicator active">1. Application</span>
+                                <span class="step-indicator">2. Server(s)</span>
+                                <span class="step-indicator">3. Database</span>
+                                <span class="step-indicator">4. Details</span>
+                            </div>
+                        </div>
+                        
+                        <form id="wizardForm">
+                            <!-- Step 1: Application -->
+                            <div class="wizard-step" data-step="1">
+                                <h6>Application Information</h6>
+                                <div class="mb-3">
+                                    <label class="form-label">Application Name</label>
+                                    <input type="text" class="form-control" name="app_name" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Application Owner</label>
+                                    <input type="text" class="form-control" name="owner" required>
+                                </div>
+                            </div>
+
+                            <!-- Step 2: Servers -->
+                            <div class="wizard-step d-none" data-step="2">
+                                <h6>Server Information</h6>
+                                <div class="mb-3">
+                                    <label class="form-label">Is this a cluster?</label>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="is_cluster" value="no" checked onchange="toggleClusterView()">
+                                        <label class="form-check-label">Single Server</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="is_cluster" value="yes" onchange="toggleClusterView()">
+                                        <label class="form-check-label">Cluster</label>
+                                    </div>
+                                </div>
+                                <div id="singleServerForm">
+                                    <div class="mb-3">
+                                        <label class="form-label">Server Name</label>
+                                        <input type="text" class="form-control" name="name" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Check Type</label>
+                                        <select class="form-select" name="check_type" required>
+                                            <option value="ping">Ping</option>
+                                            <option value="http">HTTP</option>
+                                        </select>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Target (IP/URL)</label>
+                                        <input type="text" class="form-control" name="target" required>
+                                    </div>
+                                </div>
+                                <div id="clusterForm" class="d-none">
+                                    <div id="clusterNodes">
+                                        <div class="cluster-node mb-3">
+                                            <div class="card">
+                                                <div class="card-body">
+                                                    <div class="mb-3">
+                                                        <label class="form-label">Node Name</label>
+                                                        <input type="text" class="form-control" name="cluster_nodes[]" required>
+                                                    </div>
+                                                    <div class="mb-3">
+                                                        <label class="form-label">Target (IP/URL)</label>
+                                                        <input type="text" class="form-control" name="cluster_targets[]" required>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button type="button" class="btn btn-secondary" onclick="addClusterNode()">
+                                        <i class="fas fa-plus me-2"></i>Add Node
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Step 3: Database -->
+                            <div class="wizard-step d-none" data-step="3">
+                                <h6>Database Information</h6>
+                                <div class="mb-3">
+                                    <label class="form-label">Does this application have a database?</label>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="has_db" value="no" checked onchange="toggleDBView()">
+                                        <label class="form-check-label">No</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="has_db" value="yes" onchange="toggleDBView()">
+                                        <label class="form-check-label">Yes</label>
+                                    </div>
+                                </div>
+                                <div id="dbForm" class="d-none">
+                                    <div class="mb-3">
+                                        <label class="form-label">Database Name</label>
+                                        <input type="text" class="form-control" name="db_name">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Database Type</label>
+                                        <input type="text" class="form-control" name="db_type">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Step 4: Additional Details -->
+                            <div class="wizard-step d-none" data-step="4">
+                                <h6>Additional Details</h6>
+                                <div class="mb-3">
+                                    <label class="form-label">Mount Points (NFS/CIFS)</label>
+                                    <input type="text" class="form-control" name="mount_points">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Shutdown Sequence</label>
+                                    <textarea class="form-control" name="shutdown_sequence" rows="3"></textarea>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="previousStep()">Previous</button>
+                    <button type="button" class="btn btn-primary" onclick="nextStep()">Next</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let systems = [];
+        let currentStep = 1;
+        const totalSteps = 4;
+
+        function fetchSystems() {
+            fetch('/api/systems')
+                .then(response => response.json())
+                .then(data => {
+                    systems = data;
+                    updateSystemsDisplay();
+                });
+        }
+
+        function updateSystemsDisplay() {
+            const container = document.getElementById('systems-container');
+            container.innerHTML = '';
+            
+            systems.forEach(system => {
+                const card = document.createElement('div');
+                card.className = 'col-md-6 col-lg-4';
+                card.innerHTML = `
+                    <div class="card system-card">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <h5 class="card-title mb-0">
+                                    <span class="status-badge ${system.status ? 'status-up' : 'status-down'}"></span>
+                                    ${system.name}
+                                </h5>
+                                <div>
+                                    <button class="btn btn-sm btn-primary" onclick="editSystem('${system._id}')">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-danger" onclick="deleteSystem('${system._id}')">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <p class="card-text">
+                                <strong>Application:</strong> ${system.app_name}<br>
+                                <strong>Type:</strong> ${system.check_type}<br>
+                                <strong>Target:</strong> ${system.target}<br>
+                                ${system.db_name ? `<strong>Database:</strong> ${system.db_name}<br>` : ''}
+                                <strong>Owner:</strong> ${system.owner}<br>
+                                ${system.cluster_nodes ? `<strong>Cluster Nodes:</strong> ${system.cluster_nodes}<br>` : ''}
+                            </p>
+                            <div class="last-check">
+                                Last checked: ${new Date(system.last_check).toLocaleString()}
+                            </div>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function updateProgressBar() {
+            const progress = ((currentStep - 1) / (totalSteps - 1)) * 100;
+            document.querySelector('.progress-bar').style.width = `${progress}%`;
+            
+            // Update step indicators
+            document.querySelectorAll('.step-indicator').forEach((indicator, index) => {
+                if (index + 1 < currentStep) {
+                    indicator.classList.add('completed');
+                } else if (index + 1 === currentStep) {
+                    indicator.classList.add('active');
+                } else {
+                    indicator.classList.remove('active', 'completed');
+                }
+            });
+        }
+
+        function showStep(step) {
+            document.querySelectorAll('.wizard-step').forEach(s => {
+                if (parseInt(s.dataset.step) === step) {
+                    s.classList.remove('d-none');
+                } else {
+                    s.classList.add('d-none');
+                }
+            });
+
+            const footer = document.querySelector('.modal-footer');
+            const prevBtn = footer.querySelector('button:first-child');
+            const nextBtn = footer.querySelector('button:last-child');
+
+            prevBtn.style.display = step === 1 ? 'none' : 'block';
+            nextBtn.textContent = step === totalSteps ? 'Submit' : 'Next';
+        }
+
+        function nextStep() {
+            if (currentStep < totalSteps) {
+                currentStep++;
+                showStep(currentStep);
+                updateProgressBar();
+            } else {
+                submitWizardForm();
+            }
+        }
+
+        function previousStep() {
+            if (currentStep > 1) {
+                currentStep--;
+                showStep(currentStep);
+                updateProgressBar();
+            }
+        }
+
+        function toggleClusterView() {
+            const isCluster = document.querySelector('input[name="is_cluster"]:checked').value === 'yes';
+            document.getElementById('singleServerForm').classList.toggle('d-none', isCluster);
+            document.getElementById('clusterForm').classList.toggle('d-none', !isCluster);
+        }
+
+        function toggleDBView() {
+            const hasDB = document.querySelector('input[name="has_db"]:checked').value === 'yes';
+            document.getElementById('dbForm').classList.toggle('d-none', !hasDB);
+        }
+
+        function addClusterNode() {
+            const container = document.getElementById('clusterNodes');
+            const nodeTemplate = container.querySelector('.cluster-node').cloneNode(true);
+            container.appendChild(nodeTemplate);
+        }
+
+        function submitWizardForm() {
+            const form = document.getElementById('wizardForm');
+            const formData = new FormData(form);
+            const data = {};
+
+            formData.forEach((value, key) => {
+                if (key.endsWith('[]')) {
+                    const baseKey = key.slice(0, -2);
+                    if (!data[baseKey]) {
+                        data[baseKey] = [];
+                    }
+                    data[baseKey].push(value);
+                } else {
+                    data[key] = value;
+                }
+            });
+
+            // Handle cluster nodes
+            if (data.is_cluster === 'yes') {
+                data.name = `${data.app_name} Cluster`;
+                data.cluster_info = data.cluster_nodes.map((node, index) => ({
+                    name: node,
+                    target: data.cluster_targets[index]
+                }));
+            }
+
+            fetch('/api/systems', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(() => {
+                fetchSystems();
+                bootstrap.Modal.getInstance(document.getElementById('wizardModal')).hide();
+                form.reset();
+                currentStep = 1;
+                showStep(1);
+                updateProgressBar();
+            });
+        }
+
+        function importCSV(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            fetch('/api/systems/import', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert(data.error);
+                } else {
+                    alert(data.message);
+                    fetchSystems();
+                }
+                input.value = '';
+            })
+            .catch(error => {
+                alert('Error importing CSV file');
+                input.value = '';
+            });
+        }
+
+        function editSystem(systemId) {
+            const system = systems.find(s => s._id === systemId);
+            const form = document.getElementById('editSystemForm');
+            
+            for (let field in system) {
+                const input = form.elements[field];
+                if (input) {
+                    input.value = system[field];
+                }
+            }
+            
+            form.elements['system_id'].value = systemId;
+            new bootstrap.Modal(document.getElementById('editSystemModal')).show();
+        }
+
+        function updateSystem() {
+            const form = document.getElementById('editSystemForm');
+            const formData = new FormData(form);
+            const data = Object.fromEntries(formData.entries());
+            const systemId = data.system_id;
+            delete data.system_id;
+            
+            fetch(`/api/systems/${systemId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(() => {
+                fetchSystems();
+                bootstrap.Modal.getInstance(document.getElementById('editSystemModal')).hide();
+            });
+        }
+
+        function deleteSystem(systemId) {
+            if (confirm('Are you sure you want to delete this system?')) {
+                fetch(`/api/systems/${systemId}`, {
+                    method: 'DELETE'
+                })
+                .then(response => response.json())
+                .then(() => {
+                    fetchSystems();
+                });
+            }
+        }
+
+        // Initial fetch and set up auto-refresh
+        fetchSystems();
+        setInterval(fetchSystems, 60000);
+    </script>
+</body>
+</html>
