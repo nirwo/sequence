@@ -21,7 +21,7 @@ db.createCollection('systems', {
                 },
                 check_type: {
                     bsonType: "string",
-                    enum: ["http", "ping"],
+                    enum: ["http", "ping", "both"],
                     description: "Type of health check - defaults to ping"
                 },
                 target: {
@@ -36,30 +36,44 @@ db.createCollection('systems', {
                     bsonType: ["string", "null"],
                     description: "Database type - optional"
                 },
-                mount_points: {
-                    bsonType: ["array", "null"],
-                    items: {
-                        bsonType: "string"
-                    },
-                    description: "List of mount points - optional"
+                db_port: {
+                    bsonType: ["int", "null"],
+                    description: "Database port - optional"
                 },
                 owner: {
                     bsonType: ["string", "null"],
                     description: "System owner - optional"
                 },
                 shutdown_sequence: {
-                    bsonType: ["array", "null"],
-                    items: {
-                        bsonType: "string"
-                    },
+                    bsonType: ["string", "null"],
                     description: "Shutdown sequence steps - optional"
+                },
+                sequence_status: {
+                    bsonType: ["string", "null"],
+                    enum: ["not_started", "in_progress", "completed", null],
+                    description: "Status of shutdown/startup sequence"
                 },
                 cluster_nodes: {
                     bsonType: ["array", "null"],
                     items: {
-                        bsonType: "string"
+                        bsonType: "object",
+                        required: ["host"],
+                        properties: {
+                            host: {
+                                bsonType: "string",
+                                description: "Node hostname or IP"
+                            },
+                            status: {
+                                bsonType: "bool",
+                                description: "Node status"
+                            },
+                            last_check: {
+                                bsonType: ["date", "null"],
+                                description: "Last node check timestamp"
+                            }
+                        }
                     },
-                    description: "List of cluster nodes - optional"
+                    description: "List of cluster nodes"
                 },
                 created_at: {
                     bsonType: "date",
@@ -72,18 +86,27 @@ db.createCollection('systems', {
                 status: {
                     bsonType: "bool",
                     description: "Current system status"
+                },
+                db_status: {
+                    bsonType: ["bool", "null"],
+                    description: "Database connection status"
+                },
+                last_error: {
+                    bsonType: ["string", "null"],
+                    description: "Last error message"
                 }
             }
         }
     },
-    validationLevel: "moderate",  // Changed to moderate to be more flexible with existing data
-    validationAction: "warn"      // Changed to warn to log validation errors instead of rejecting
+    validationLevel: "moderate",
+    validationAction: "warn"
 });
 
 // Create indexes
 db.systems.createIndex({ "name": 1 }, { unique: true });
 db.systems.createIndex({ "app_name": 1 });
 db.systems.createIndex({ "status": 1 });
+db.systems.createIndex({ "sequence_status": 1 });
 db.systems.createIndex({ "created_at": 1 });
 db.systems.createIndex({ "last_check": 1 });
 

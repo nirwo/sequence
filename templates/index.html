@@ -85,6 +85,36 @@
         .progress {
             height: 5px;
         }
+        
+        .summary-window {
+            position: fixed;
+            right: 20px;
+            top: 20px;
+            width: 300px;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            z-index: 1000;
+        }
+        .summary-item {
+            margin: 5px 0;
+            display: flex;
+            justify-content: space-between;
+        }
+        .summary-label {
+            font-weight: bold;
+        }
+        .sequence-badge {
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            margin-left: 5px;
+        }
+        .not-started { background: #f0f0f0; }
+        .in-progress { background: #fff3cd; }
+        .completed { background: #d4edda; }
     </style>
 </head>
 <body>
@@ -380,6 +410,44 @@
 
     <!-- Toast Container -->
     <div class="toast-container"></div>
+
+    <!-- Summary Window -->
+    <div class="summary-window">
+        <h4>Systems Summary</h4>
+        <div class="summary-item">
+            <span class="summary-label">Total Systems:</span>
+            <span id="total-systems">0</span>
+        </div>
+        <div class="summary-item">
+            <span class="summary-label">Online:</span>
+            <span id="online-systems">0</span>
+        </div>
+        <div class="summary-item">
+            <span class="summary-label">Offline:</span>
+            <span id="offline-systems">0</span>
+        </div>
+        <div class="summary-item">
+            <span class="summary-label">DB Services Online:</span>
+            <span id="db-online">0</span>
+        </div>
+        <div class="summary-item">
+            <span class="summary-label">DB Services Offline:</span>
+            <span id="db-offline">0</span>
+        </div>
+        <h5>Sequence Status</h5>
+        <div class="summary-item">
+            <span class="summary-label">Not Started:</span>
+            <span id="sequence-not-started">0</span>
+        </div>
+        <div class="summary-item">
+            <span class="summary-label">In Progress:</span>
+            <span id="sequence-in-progress">0</span>
+        </div>
+        <div class="summary-item">
+            <span class="summary-label">Completed:</span>
+            <span id="sequence-completed">0</span>
+        </div>
+    </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script>
@@ -1235,6 +1303,112 @@
                 return new bootstrap.Tooltip(tooltipTriggerEl);
             });
         }
+
+        // Add updateSummary function
+        function updateSummary() {
+            fetch('/api/systems/summary')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('total-systems').textContent = data.total;
+                    document.getElementById('online-systems').textContent = data.online;
+                    document.getElementById('offline-systems').textContent = data.offline;
+                    document.getElementById('db-online').textContent = data.db_online;
+                    document.getElementById('db-offline').textContent = data.db_offline;
+                    document.getElementById('sequence-not-started').textContent = data.sequence_not_started;
+                    document.getElementById('sequence-in-progress').textContent = data.sequence_in_progress;
+                    document.getElementById('sequence-completed').textContent = data.sequence_completed;
+                })
+                .catch(error => console.error('Error updating summary:', error));
+        }
+
+        // Update sequence status
+        function updateSequenceStatus(systemId, status) {
+            fetch(`/api/systems/sequence/${systemId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ status: status })
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.error) {
+                    showToast(result.error, 'error');
+                } else {
+                    showToast('Sequence status updated', 'success');
+                    fetchSystems();
+                    updateSummary();
+                }
+            })
+            .catch(error => {
+                showToast('Error updating sequence status: ' + error.message, 'error');
+            });
+        }
+
+        // Modify the systems table to include sequence status and tooltips
+        function createSystemRow(system) {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${system.name}</td>
+                <td>${system.app_name || 'N/A'}</td>
+                <td>
+                    ${system.target || 'N/A'}
+                    ${system.cluster_nodes ? 
+                        `<br><small>Cluster Nodes: ${system.cluster_nodes.map(node => 
+                            `${node.host} (${node.status ? 'Online' : 'Offline'})`).join(', ')}</small>` 
+                        : ''}
+                </td>
+                <td>${system.db_name || 'N/A'}</td>
+                <td>
+                    <span class="status-badge ${system.status ? 'online' : 'offline'}"
+                          title="${system.last_error || (system.status ? 'System is online' : 'System is offline')}">
+                        ${system.status ? 'Online' : 'Offline'}
+                    </span>
+                    ${system.db_status !== null ? 
+                        `<br><small title="Database Status">DB: 
+                            <span class="status-badge ${system.db_status ? 'online' : 'offline'}">
+                                ${system.db_status ? 'Online' : 'Offline'}
+                            </span>
+                        </small>` 
+                        : ''}
+                </td>
+                <td>
+                    <select class="form-control sequence-status" onchange="updateSequenceStatus('${system._id}', this.value)">
+                        <option value="not_started" ${system.sequence_status === 'not_started' ? 'selected' : ''}>Not Started</option>
+                        <option value="in_progress" ${system.sequence_status === 'in_progress' ? 'selected' : ''}>In Progress</option>
+                        <option value="completed" ${system.sequence_status === 'completed' ? 'selected' : ''}>Completed</option>
+                    </select>
+                </td>
+                <td>
+                    <button class="btn btn-sm btn-primary" onclick="checkSystem('${system._id}')" 
+                            title="Check system status including ping, HTTP, and database">
+                        <i class="fas fa-sync-alt"></i> Check
+                    </button>
+                    <button class="btn btn-sm btn-info" onclick="editSystem('${system._id}')"
+                            title="Edit system configuration">
+                        <i class="fas fa-edit"></i> Edit
+                    </button>
+                    <button class="btn btn-sm btn-danger" onclick="deleteSystem('${system._id}')"
+                            title="Delete this system">
+                        <i class="fas fa-trash"></i> Delete
+                    </button>
+                </td>
+            `;
+            return row;
+        }
+
+        // Add periodic updates
+        setInterval(updateSummary, 30000); // Update summary every 30 seconds
+        
+        // Call updateSummary when page loads and after system changes
+        document.addEventListener('DOMContentLoaded', updateSummary);
+        
+        // Update original fetchSystems to call updateSummary
+        const originalFetchSystems = fetchSystems;
+        fetchSystems = function() {
+            originalFetchSystems();
+            updateSummary();
+        };
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
