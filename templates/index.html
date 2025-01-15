@@ -646,7 +646,7 @@
     </div>
 
     <!-- Toast Container -->
-    <div class="toast-container"></div>
+    <div id="toastContainer" class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1050;"></div>
 
     <button id="refreshButton" class="btn btn-sm btn-success" style="margin-left: 10px;" title="Test all systems" aria-label="Trigger test for all systems">
         <i class="fas fa-sync-alt"></i> Trigger All Tests
@@ -1382,45 +1382,46 @@
 
         // Toast notification system
         function showToast(message, type = 'success', duration = 5000) {
-            const toastContainer = document.getElementById('toastContainer');
+            let toastContainer = document.getElementById('toastContainer');
             if (!toastContainer) {
-                // Create toast container if it doesn't exist
-                const container = document.createElement('div');
-                container.id = 'toastContainer';
-                container.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 1050;';
-                document.body.appendChild(container);
+                toastContainer = document.createElement('div');
+                toastContainer.id = 'toastContainer';
+                toastContainer.className = 'toast-container position-fixed top-0 end-0 p-3';
+                toastContainer.style.zIndex = '1050';
+                document.body.appendChild(toastContainer);
             }
 
             const toast = document.createElement('div');
-            toast.className = `toast align-items-center border-0 ${type === 'error' ? 'bg-danger' : 'bg-success'} text-white`;
+            toast.className = `toast align-items-center text-white border-0 ${type === 'error' ? 'bg-danger' : 'bg-success'}`;
             toast.setAttribute('role', 'alert');
             toast.setAttribute('aria-live', 'assertive');
             toast.setAttribute('aria-atomic', 'true');
+            toast.innerHTML = `
+                <div class="d-flex">
+                    <div class="toast-body">
+                        ${message}
+                    </div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
+            `;
 
-            const toastContent = document.createElement('div');
-            toastContent.className = 'd-flex';
-
-            const messageDiv = document.createElement('div');
-            messageDiv.className = 'toast-body';
-            messageDiv.innerHTML = message;
-
-            const closeButton = document.createElement('button');
-            closeButton.type = 'button';
-            closeButton.className = 'btn-close btn-close-white me-2 m-auto';
-            closeButton.setAttribute('data-bs-dismiss', 'toast');
-            closeButton.setAttribute('aria-label', 'Close');
-
-            toastContent.appendChild(messageDiv);
-            toastContent.appendChild(closeButton);
-            toast.appendChild(toastContent);
             toastContainer.appendChild(toast);
 
-            const bsToast = new bootstrap.Toast(toast, { autohide: true, delay: duration });
+            const bsToast = new bootstrap.Toast(toast, {
+                animation: true,
+                autohide: true,
+                delay: duration
+            });
+
             bsToast.show();
 
             // Remove toast after it's hidden
             toast.addEventListener('hidden.bs.toast', () => {
                 toast.remove();
+                // Clean up empty toast container
+                if (toastContainer.children.length === 0) {
+                    toastContainer.remove();
+                }
             });
         }
 
