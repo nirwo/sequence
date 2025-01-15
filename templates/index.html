@@ -509,6 +509,7 @@
                 .then(data => {
                     systems = data.systems || [];
                     updateSystemsTable();
+                    updateSummary();
                 })
                 .catch(error => {
                     showToast('Error fetching systems: ' + error.message, 'error');
@@ -520,17 +521,16 @@
             const tbody = document.getElementById('systemsTableBody');
             tbody.innerHTML = '';
 
-            if (systems.length === 0) {
+            if (!systems || systems.length === 0) {
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="8" class="text-center">No systems found</td>
+                        <td colspan="7" class="text-center">No systems found</td>
                     </tr>
                 `;
                 return;
             }
 
             systems.forEach(system => {
-                const systemId = system._id.$oid || system._id;
                 const row = createSystemRow(system);
                 tbody.appendChild(row);
             });
@@ -540,6 +540,131 @@
             tooltips.map(function (tooltipTriggerEl) {
                 return new bootstrap.Tooltip(tooltipTriggerEl);
             });
+        }
+
+        // Create a row for a system
+        function createSystemRow(system) {
+            const row = document.createElement('tr');
+            const systemId = system._id.$oid || system._id;
+            
+            // Prepare test results display
+            let statusHtml = '';
+            let testResults = [];
+            
+            // Main target tests
+            if (system.target) {
+                if (system.check_type === 'http' || system.check_type === 'both') {
+                    testResults.push({
+                        type: 'HTTP',
+                        target: system.target,
+                        status: system.http_status,
+                        error: system.http_error
+                    });
+                }
+                if (system.check_type === 'ping' || system.check_type === 'both') {
+                    testResults.push({
+                        type: 'Ping',
+                        target: system.target,
+                        status: system.ping_status,
+                        error: system.ping_error
+                    });
+                }
+            }
+            
+            // Cluster nodes tests
+            if (system.cluster_nodes && Array.isArray(system.cluster_nodes)) {
+                system.cluster_nodes.forEach(node => {
+                    if (system.check_type === 'http' || system.check_type === 'both') {
+                        testResults.push({
+                            type: 'HTTP',
+                            target: node.host,
+                            status: node.http_status,
+                            error: node.http_error
+                        });
+                    }
+                    if (system.check_type === 'ping' || system.check_type === 'both') {
+                        testResults.push({
+                            type: 'Ping',
+                            target: node.host,
+                            status: node.ping_status,
+                            error: node.ping_error
+                        });
+                    }
+                });
+            }
+            
+            // Build status HTML
+            statusHtml = `
+                <div class="status-container">
+                    <span class="status-badge ${system.status ? 'online' : 'offline'}"
+                          title="${system.last_error || (system.status ? 'System is online' : 'System is offline')}">
+                        ${system.status ? 'Online' : 'Offline'}
+                    </span>
+                    <div class="test-results mt-2">
+                        ${testResults.map(test => `
+                            <div class="test-result">
+                                <small>
+                                    ${test.type} (${test.target}): 
+                                    <span class="badge ${test.status ? 'bg-success' : 'bg-danger'}"
+                                          title="${test.error || (test.status ? 'Test passed' : 'Test failed')}">
+                                        ${test.status ? 'Pass' : 'Fail'}
+                                    </span>
+                                </small>
+                            </div>
+                        `).join('')}
+                    </div>
+                    ${system.db_status !== null ? `
+                        <div class="db-status mt-2">
+                            <small title="Database Status">DB: 
+                                <span class="status-badge ${system.db_status ? 'online' : 'offline'}">
+                                    ${system.db_status ? 'Online' : 'Offline'}
+                                </span>
+                            </small>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+            
+            row.innerHTML = `
+                <td>${system.name || 'N/A'}</td>
+                <td>${system.app_name || 'N/A'}</td>
+                <td>
+                    ${system.target || 'N/A'}
+                    ${system.cluster_nodes && Array.isArray(system.cluster_nodes) ? 
+                        `<br><small>Cluster Nodes: ${system.cluster_nodes.map(node => 
+                            node.host || node).join(', ')}</small>` 
+                        : ''}
+                </td>
+                <td>${system.db_name || 'N/A'}</td>
+                <td>${statusHtml}</td>
+                <td>
+                    <select class="form-control sequence-status" 
+                            onchange="updateSequenceStatus('${systemId}', this.value)"
+                            aria-label="Update sequence status">
+                        <option value="not_started" ${system.sequence_status === 'not_started' ? 'selected' : ''}>Not Started</option>
+                        <option value="in_progress" ${system.sequence_status === 'in_progress' ? 'selected' : ''}>In Progress</option>
+                        <option value="completed" ${system.sequence_status === 'completed' ? 'selected' : ''}>Completed</option>
+                    </select>
+                </td>
+                <td>
+                    <button class="btn btn-sm btn-success" onclick="checkSystem('${systemId}')" 
+                            title="Test system connectivity and services"
+                            aria-label="Trigger system test">
+                        <i class="fas fa-sync-alt"></i> Trigger Test
+                    </button>
+                    <button class="btn btn-sm btn-info" onclick="editSystem('${systemId}')"
+                            title="Edit system configuration"
+                            aria-label="Edit system">
+                        <i class="fas fa-edit"></i> Edit
+                    </button>
+                    <button class="btn btn-sm btn-danger" onclick="deleteSystem('${systemId}')"
+                            title="Delete this system"
+                            aria-label="Delete system">
+                        <i class="fas fa-trash"></i> Delete
+                    </button>
+                </td>
+            `;
+            return row;
         }
 
         // Add sorting function
@@ -598,130 +723,6 @@
         }
 
         // Update test results display
-        function createSystemRow(system) {
-            const row = document.createElement('tr');
-            
-            // Prepare test results display
-            let statusHtml = '';
-            let testResults = [];
-            
-            // Main target tests
-            if (system.target) {
-                if (system.check_type === 'http' || system.check_type === 'both') {
-                    testResults.push({
-                        type: 'HTTP',
-                        target: system.target,
-                        status: system.http_status,
-                        error: system.http_error
-                    });
-                }
-                if (system.check_type === 'ping' || system.check_type === 'both') {
-                    testResults.push({
-                        type: 'Ping',
-                        target: system.target,
-                        status: system.ping_status,
-                        error: system.ping_error
-                    });
-                }
-            }
-            
-            // Cluster nodes tests
-            if (system.cluster_nodes) {
-                system.cluster_nodes.forEach(node => {
-                    if (system.check_type === 'http' || system.check_type === 'both') {
-                        testResults.push({
-                            type: 'HTTP',
-                            target: node.host,
-                            status: node.http_status,
-                            error: node.http_error
-                        });
-                    }
-                    if (system.check_type === 'ping' || system.check_type === 'both') {
-                        testResults.push({
-                            type: 'Ping',
-                            target: node.host,
-                            status: node.ping_status,
-                            error: node.ping_error
-                        });
-                    }
-                });
-            }
-            
-            // Build status HTML
-            statusHtml = `
-                <div class="status-container">
-                    <span class="status-badge ${system.status ? 'online' : 'offline'}"
-                          title="${system.last_error || (system.status ? 'System is online' : 'System is offline')}">
-                        ${system.status ? 'Online' : 'Offline'}
-                    </span>
-                    <div class="test-results mt-2">
-                        ${testResults.map(test => `
-                            <div class="test-result">
-                                <small>
-                                    ${test.type} (${test.target}): 
-                                    <span class="badge ${test.status ? 'bg-success' : 'bg-danger'}"
-                                          title="${test.error || (test.status ? 'Test passed' : 'Test failed')}">
-                                        ${test.status ? 'Pass' : 'Fail'}
-                                    </span>
-                                </small>
-                            </div>
-                        `).join('')}
-                    </div>
-                    ${system.db_status !== null ? `
-                        <div class="db-status mt-2">
-                            <small title="Database Status">DB: 
-                                <span class="status-badge ${system.db_status ? 'online' : 'offline'}">
-                                    ${system.db_status ? 'Online' : 'Offline'}
-                                </span>
-                            </small>
-                        </div>
-                    ` : ''}
-                </div>
-            `;
-            
-            row.innerHTML = `
-                <td>${system.name}</td>
-                <td>${system.app_name || 'N/A'}</td>
-                <td>
-                    ${system.target || 'N/A'}
-                    ${system.cluster_nodes ? 
-                        `<br><small>Cluster Nodes: ${system.cluster_nodes.map(node => 
-                            node.host).join(', ')}</small>` 
-                        : ''}
-                </td>
-                <td>${system.db_name || 'N/A'}</td>
-                <td>${statusHtml}</td>
-                <td>
-                    <select class="form-control sequence-status" 
-                            onchange="updateSequenceStatus('${system._id}', this.value)"
-                            aria-label="Update sequence status">
-                        <option value="not_started" ${system.sequence_status === 'not_started' ? 'selected' : ''}>Not Started</option>
-                        <option value="in_progress" ${system.sequence_status === 'in_progress' ? 'selected' : ''}>In Progress</option>
-                        <option value="completed" ${system.sequence_status === 'completed' ? 'selected' : ''}>Completed</option>
-                    </select>
-                </td>
-                <td>
-                    <button class="btn btn-sm btn-success" onclick="checkSystem('${system._id}')" 
-                            title="Test system connectivity and services"
-                            aria-label="Trigger system test">
-                        <i class="fas fa-sync-alt"></i> Trigger Test
-                    </button>
-                    <button class="btn btn-sm btn-info" onclick="editSystem('${system._id}')"
-                            title="Edit system configuration"
-                            aria-label="Edit system">
-                        <i class="fas fa-edit"></i> Edit
-                    </button>
-                    <button class="btn btn-sm btn-danger" onclick="deleteSystem('${system._id}')"
-                            title="Delete this system"
-                            aria-label="Delete system">
-                        <i class="fas fa-trash"></i> Delete
-                    </button>
-                </td>
-            `;
-            return row;
-        }
-
-        // Edit system
         function editSystem(systemId) {
             const system = systems.find(s => (s._id.$oid || s._id) === systemId);
             if (!system) {
@@ -1139,7 +1140,7 @@
         function previewCSV(input) {
             const file = input.files[0];
             if (!file) return;
-
+            
             const formData = new FormData();
             formData.append('file', file);
 
@@ -1531,7 +1532,8 @@
                     </span>
                 </td>
                 <td>
-                    <select class="form-control sequence-status" onchange="updateSequenceStatus('${system._id}', this.value)"
+                    <select class="form-control sequence-status" 
+                            onchange="updateSequenceStatus('${system._id}', this.value)"
                             aria-label="Update sequence status">
                         <option value="not_started" ${system.sequence_status === 'not_started' ? 'selected' : ''}>Not Started</option>
                         <option value="in_progress" ${system.sequence_status === 'in_progress' ? 'selected' : ''}>In Progress</option>
@@ -1539,7 +1541,7 @@
                     </select>
                 </td>
                 <td>
-                    <button class="btn btn-sm btn-success" onclick="checkSystem('${system._id}')"
+                    <button class="btn btn-sm btn-success" onclick="checkSystem('${system._id}')" 
                             title="Test system connectivity and services"
                             aria-label="Trigger system test">
                         <i class="fas fa-sync-alt"></i> Trigger Test
