@@ -43,7 +43,15 @@ The easiest way to run the application is using Docker Compose:
    ```
 4. The application will be available at:
    ```
-   http://localhost:5000
+   http://<your-host-ip>:5000
+   ```
+   
+   To find your host IP address:
+   ```bash
+   # On Linux
+   ip addr show
+   # or
+   hostname -I
    ```
 
 ### Docker Environment Variables

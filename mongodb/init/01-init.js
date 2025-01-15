@@ -81,7 +81,7 @@ if (db.systems.countDocuments() === 0) {
             name: "Sample App Server",
             app_name: "Sample Application",
             check_type: "http",
-            target: "http://localhost:8080",
+            target: "http://app-server:8080",
             owner: "System Admin",
             status: false,
             created_at: new Date(),
@@ -93,7 +93,7 @@ if (db.systems.countDocuments() === 0) {
             name: "Database Cluster",
             app_name: "Core Database",
             check_type: "ping",
-            target: "db.internal",
+            target: "db-server",
             db_name: "production_db",
             db_type: "PostgreSQL",
             owner: "DBA Team",
@@ -101,7 +101,7 @@ if (db.systems.countDocuments() === 0) {
             created_at: new Date(),
             last_check: new Date(),
             shutdown_sequence: "1. Stop application servers\n2. Wait for connections to drain\n3. Shutdown database",
-            cluster_nodes: ["db-node-1", "db-node-2", "db-node-3"]
+            cluster_nodes: ["db-node-1.internal", "db-node-2.internal", "db-node-3.internal"]
         }
     ]);
 }

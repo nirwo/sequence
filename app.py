@@ -109,4 +109,9 @@ if __name__ == '__main__':
     status_thread = threading.Thread(target=update_status)
     status_thread.daemon = True
     status_thread.start()
-    app.run(debug=True)
+    
+    # Get host and port from environment variables with defaults
+    host = os.getenv('FLASK_HOST', '0.0.0.0')
+    port = int(os.getenv('FLASK_PORT', 5000))
+    
+    app.run(host=host, port=port, debug=True)
