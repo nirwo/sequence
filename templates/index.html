@@ -217,14 +217,36 @@
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav">
+                <ul class="navbar-nav me-auto">
                     <li class="nav-item">
-                        <a class="nav-link active" href="#" onclick="showSystems()">Systems</a>
+                        <a class="nav-link" href="#" onclick="showSummaryPage()">Summary</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="#" onclick="showSummary()">Summary</a>
+                        <a class="nav-link" href="#" onclick="showSystemsPage()">Systems</a>
                     </li>
                 </ul>
+                <div class="d-flex">
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-outline-light dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-file-import"></i> Import/Export
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li>
+                                <label class="dropdown-item" style="cursor: pointer;">
+                                    <i class="fas fa-file-upload"></i> Import CSV
+                                    <input type="file" id="csvFileInput" accept=".csv" style="display: none;" onchange="previewCSV(this)">
+                                </label>
+                            </li>
+                            <li><a class="dropdown-item" href="#" onclick="downloadExampleCSV()">
+                                <i class="fas fa-file-download"></i> Export Systems
+                            </a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="/api/systems/example/download">
+                                <i class="fas fa-file-alt"></i> Download Template
+                            </a></li>
+                        </ul>
+                    </div>
+                </div>
             </div>
         </div>
     </nav>
@@ -527,49 +549,61 @@
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">Import Systems from CSV</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    <h5 class="modal-title">CSV Import</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <div class="alert alert-info">
-                        <h6 class="mb-2">CSV Import Instructions:</h6>
-                        <ol class="mb-0">
-                            <li>Download the <a href="/api/download/example-csv" class="alert-link">example CSV file</a> to see the required format</li>
-                            <li>Create your CSV file following the same structure</li>
-                            <li>Upload your file and map the columns</li>
-                            <li>Required fields: System Name, Application Name, Target URL/IP</li>
-                        </ol>
+                        Please map your CSV columns to the corresponding system fields. Leave unmapped fields as "None".
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">CSV File <span class="text-danger">*</span></label>
-                        <input type="file" class="form-control" id="csvMappingFile" accept=".csv" onchange="previewCSV(this)">
-                        <div class="form-text">
-                            File must be in CSV format with headers matching the example file.
-                            <button type="button" class="btn btn-link btn-sm p-0 ms-2" onclick="downloadExampleCSV()">
-                                <i class="fas fa-download"></i> Download Example
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <div id="csvPreview" class="d-none">
-                        <h6 class="mb-3">CSV Preview</h6>
-                        <div class="table-responsive mb-3">
-                            <table class="table table-sm table-striped">
-                                <thead id="csvPreviewHeader"></thead>
+                    <div id="csvPreviewContainer">
+                        <h6>CSV Preview</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm" id="csvPreviewTable">
+                                <thead>
+                                    <tr id="csvHeaderRow"></tr>
+                                </thead>
                                 <tbody id="csvPreviewBody"></tbody>
                             </table>
                         </div>
-                        
-                        <h6 class="mb-3">Field Mapping</h6>
-                        <p class="text-muted small">Map your CSV columns to system fields. Required fields are marked with *</p>
-                        <div class="row" id="fieldMapping">
-                            <!-- Field mapping will be populated here -->
+                    </div>
+                    <div id="columnMappingContainer" class="mt-3">
+                        <h6>Column Mapping</h6>
+                        <div id="mappingFields">
+                            <!-- Mapping fields will be added here dynamically -->
                         </div>
+                    </div>
+                    <div id="importWarnings" class="alert alert-warning mt-3" style="display: none;">
+                        <!-- Import warnings will be shown here -->
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-primary" onclick="importMappedCSV()">Import</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import Warning Modal -->
+    <div class="modal fade" id="importWarningModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Import Warnings</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning">
+                        The following issues were found in your CSV file:
+                    </div>
+                    <ul id="warningsList" class="list-unstyled">
+                        <!-- Warnings will be added here -->
+                    </ul>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="proceedWithImport()">Proceed Anyway</button>
                 </div>
             </div>
         </div>
@@ -1197,7 +1231,7 @@
 
                 // Set up header
                 const headerRow = '<tr>' + data.headers.map(h => `<th>${h}</th>`).join('') + '</tr>';
-                document.getElementById('csvPreviewHeader').innerHTML = headerRow;
+                document.getElementById('csvHeaderRow').innerHTML = headerRow;
 
                 // Set up preview rows
                 const previewRows = data.preview_rows.map(row => 
@@ -1206,7 +1240,7 @@
                 document.getElementById('csvPreviewBody').innerHTML = previewRows;
 
                 // Set up field mapping
-                const mappingDiv = document.getElementById('fieldMapping');
+                const mappingDiv = document.getElementById('mappingFields');
                 const availableFields = [
                     { id: 'name', label: 'System Name', required: true },
                     { id: 'app_name', label: 'Application Name', required: true },
@@ -1268,7 +1302,7 @@
             // Check required fields
             const requiredFields = ['name'];  // Only server name is required
             
-            document.querySelectorAll('#fieldMapping select').forEach(select => {
+            document.querySelectorAll('#mappingFields select').forEach(select => {
                 const field = select.dataset.field;
                 if (select.value) {
                     mapping[field] = select.value;
