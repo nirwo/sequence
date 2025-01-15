@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, Response
 from flask_pymongo import PyMongo
 from datetime import datetime
 import threading
@@ -10,51 +10,13 @@ import csv
 import io
 import json
 from bson import ObjectId, json_util
-from apscheduler.schedulers.background import BackgroundScheduler
 
 app = Flask(__name__)
 app.config["MONGO_URI"] = os.getenv("MONGO_URI", "mongodb://localhost:27017/app_monitor")
 mongo = PyMongo(app)
 
-# Custom JSON encoder to handle ObjectId
-class CustomJSONEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, ObjectId):
-            return str(obj)
-        if isinstance(obj, datetime):
-            return obj.isoformat()
-        return super().default(obj)
-
-app.json_encoder = CustomJSONEncoder
-
-def check_status(target, check_type):
-    try:
-        if check_type == 'ping':
-            response = ping(target)
-            return bool(response)
-        elif check_type == 'http':
-            response = requests.get(target, timeout=5)
-            return response.status_code == 200
-        return False
-    except:
-        return False
-
-def update_status():
-    while True:
-        systems = mongo.db.systems.find()
-        for system in systems:
-            status = False
-            if system.get('check_type') in ['ping', 'http']:
-                status = check_status(system['target'], system['check_type'])
-            
-            mongo.db.systems.update_one(
-                {'_id': system['_id']},
-                {'$set': {
-                    'status': status,
-                    'last_check': datetime.now()
-                }}
-            )
-        time.sleep(60)
+def parse_json(data):
+    return json.loads(json_util.dumps(data))
 
 @app.route('/')
 def index():
@@ -62,8 +24,15 @@ def index():
 
 @app.route('/api/systems', methods=['GET'])
 def get_systems():
-    systems = list(mongo.db.systems.find())
-    return jsonify(systems)
+    try:
+        systems = list(mongo.db.systems.find())
+        return Response(
+            json_util.dumps(systems),
+            mimetype='application/json'
+        )
+    except Exception as e:
+        print(f"Error fetching systems: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/systems', methods=['POST'])
 def add_system():
@@ -87,19 +56,14 @@ def add_system():
         result = mongo.db.systems.insert_one(system)
         return jsonify({"message": "System added successfully", "id": str(result.inserted_id)})
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        print(f"Error adding system: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/systems/<system_id>', methods=['PUT'])
 def update_system(system_id):
     try:
         system = request.json
-        # Convert ObjectId to string for comparison
-        system_id = str(system_id)
         
-        # Remove _id from update data if present
-        if '_id' in system:
-            del system['_id']
-            
         # Handle cluster nodes
         if 'cluster_nodes' in system and isinstance(system['cluster_nodes'], str):
             system['cluster_nodes'] = [node.strip() for node in system['cluster_nodes'].split(',') if node.strip()]
@@ -122,12 +86,50 @@ def update_system(system_id):
             
         return jsonify({"message": "System updated successfully"})
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        print(f"Error updating system: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/systems/<system_id>', methods=['DELETE'])
 def delete_system(system_id):
-    mongo.db.systems.delete_one({'_id': ObjectId(system_id)})
-    return jsonify({"message": "System deleted successfully"})
+    try:
+        result = mongo.db.systems.delete_one({'_id': ObjectId(system_id)})
+        if result.deleted_count == 0:
+            return jsonify({"error": "System not found"}), 404
+        return jsonify({"message": "System deleted successfully"})
+    except Exception as e:
+        print(f"Error deleting system: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+def check_status(target, check_type):
+    try:
+        if check_type == 'ping':
+            response = ping(target)
+            return response is not None and response is not False
+        elif check_type == 'http':
+            response = requests.get(target, timeout=5)
+            return response.status_code == 200
+        return False
+    except:
+        return False
+
+def update_status():
+    while True:
+        try:
+            systems = mongo.db.systems.find()
+            for system in systems:
+                status = check_status(system['target'], system['check_type'])
+                mongo.db.systems.update_one(
+                    {'_id': system['_id']},
+                    {
+                        '$set': {
+                            'status': status,
+                            'last_check': datetime.now()
+                        }
+                    }
+                )
+        except Exception as e:
+            print(f"Error in status update: {str(e)}")
+        time.sleep(60)
 
 @app.route('/api/systems/import', methods=['POST'])
 def import_systems():
@@ -139,20 +141,73 @@ def import_systems():
         return jsonify({"error": "Invalid file format. Please upload a CSV file"}), 400
 
     try:
+        # Read CSV content
         stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
-        csv_data = csv.DictReader(stream)
+        csv_reader = csv.DictReader(stream)
         
         systems_added = 0
-        for row in csv_data:
-            row['created_at'] = datetime.now()
-            row['last_check'] = datetime.now()
-            row['status'] = False
-            mongo.db.systems.insert_one(row)
-            systems_added += 1
-            
-        return jsonify({"message": f"Successfully imported {systems_added} systems"})
+        errors = []
+        
+        for row in csv_reader:
+            try:
+                system = {
+                    'name': row.get('System Name', '').strip(),
+                    'app_name': row.get('Application Name', '').strip(),
+                    'check_type': row.get('Check Type', 'http').strip().lower(),
+                    'target': row.get('Target URL/IP', '').strip(),
+                    'db_name': row.get('Database Name', '').strip(),
+                    'db_type': row.get('Database Type', '').strip(),
+                    'mount_points': row.get('Mount Points', '').strip(),
+                    'owner': row.get('Owner', '').strip(),
+                    'shutdown_sequence': row.get('Shutdown Sequence', '').strip(),
+                    'created_at': datetime.now(),
+                    'last_check': datetime.now(),
+                    'status': False
+                }
+
+                # Validate required fields
+                if not system['name'] or not system['app_name']:
+                    errors.append(f"Row {systems_added + 1}: System Name and Application Name are required")
+                    continue
+
+                # Handle check type
+                if system['check_type'] not in ['http', 'ping']:
+                    system['check_type'] = 'http'
+
+                # Handle cluster nodes
+                cluster_nodes = row.get('Cluster Nodes', '').strip()
+                if cluster_nodes:
+                    system['cluster_nodes'] = [node.strip() for node in cluster_nodes.split(',') if node.strip()]
+                    if not system['target'] and system['cluster_nodes']:
+                        system['target'] = system['cluster_nodes'][0]
+
+                # Handle mount points
+                if system['mount_points']:
+                    system['mount_points'] = system['mount_points'].replace(';', ',')
+
+                # Validate target
+                if not system['target'] and not system.get('cluster_nodes'):
+                    errors.append(f"Row {systems_added + 1}: Target URL/IP is required for non-cluster systems")
+                    continue
+
+                mongo.db.systems.insert_one(system)
+                systems_added += 1
+
+            except Exception as e:
+                errors.append(f"Row {systems_added + 1}: {str(e)}")
+
+        response = {
+            "message": f"Successfully imported {systems_added} systems",
+            "systems_added": systems_added
+        }
+        
+        if errors:
+            response["warnings"] = errors
+
+        return jsonify(response)
+
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"error": f"Error processing CSV file: {str(e)}"}), 400
 
 @app.route('/api/csv/preview', methods=['POST'])
 def preview_csv():
@@ -253,7 +308,6 @@ if __name__ == '__main__':
     status_thread.daemon = True
     status_thread.start()
     
-    # Get host and port from environment variables with defaults
     host = os.getenv('FLASK_HOST', '0.0.0.0')
     port = int(os.getenv('FLASK_PORT', 5000))
     

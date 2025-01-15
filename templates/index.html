@@ -30,6 +30,33 @@
             font-size: 0.85em;
             color: #666;
         }
+        
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1060;
+        }
+        
+        .toast {
+            min-width: 300px;
+            max-width: 500px;
+            background-color: white;
+            border-left: 4px solid #dc3545;
+            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+        }
+        
+        .toast.success {
+            border-left-color: #28a745;
+        }
+        
+        .toast.error {
+            border-left-color: #dc3545;
+        }
+        
+        .toast.info {
+            border-left-color: #17a2b8;
+        }
     </style>
 </head>
 <body>
@@ -322,6 +349,9 @@
         </div>
     </div>
 
+    <!-- Toast Container -->
+    <div class="toast-container"></div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         let systems = [];
@@ -417,7 +447,7 @@
             const systemId = form.dataset.systemId;
             
             if (!systemId) {
-                console.error('No system ID found');
+                showToast('System ID not found', 'error');
                 return;
             }
 
@@ -435,7 +465,7 @@
             };
 
             if (!formData.name || !formData.app_name) {
-                alert('System Name and Application Name are required');
+                showToast('System Name and Application Name are required', 'error');
                 return;
             }
 
@@ -450,14 +480,14 @@
                 
                 const data = await response.json();
                 if (data.error) {
-                    alert(data.error);
+                    showToast(data.error, 'error');
                 } else {
+                    showToast('System updated successfully', 'success');
                     bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
                     await fetchSystems();
                 }
             } catch (error) {
-                console.error('Error updating system:', error);
-                alert('Error updating system');
+                showToast('Error updating system: ' + error.message, 'error');
             }
         }
 
@@ -583,30 +613,30 @@
         }
 
         function importCSV(input) {
-            const file = input.files[0];
-            if (!file) return;
-
+            if (!input.files.length) return;
+            
             const formData = new FormData();
-            formData.append('file', file);
-
-            fetch('/api/systems/import', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
+            formData.append('file', input.files[0]);
+            
+            try {
+                const response = await fetch('/api/systems/import', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
                 if (data.error) {
-                    alert(data.error);
+                    showToast(data.error, 'error');
                 } else {
-                    alert(data.message);
-                    fetchSystems();
+                    showToast(`Successfully imported ${data.systems_added} systems`, 'success');
+                    await fetchSystems();
                 }
-                input.value = '';
-            })
-            .catch(error => {
-                alert('Error importing CSV file');
-                input.value = '';
-            });
+            } catch (error) {
+                showToast('Error importing CSV file: ' + error.message, 'error');
+            }
+            
+            // Clear the input
+            input.value = '';
         }
 
         function openCSVMapping() {
@@ -630,7 +660,7 @@
             .then(response => response.json())
             .then(data => {
                 if (data.error) {
-                    alert(data.error);
+                    showToast(data.error, 'error');
                     return;
                 }
 
@@ -675,14 +705,14 @@
                 });
             })
             .catch(error => {
-                alert('Error previewing CSV file');
+                showToast('Error previewing CSV file', 'error');
             });
         }
 
         function importMappedCSV() {
             const file = document.getElementById('csvMappingFile').files[0];
             if (!file) {
-                alert('Please select a CSV file');
+                showToast('Please select a CSV file', 'error');
                 return;
             }
 
@@ -705,15 +735,15 @@
             .then(response => response.json())
             .then(data => {
                 if (data.error) {
-                    alert(data.error);
+                    showToast(data.error, 'error');
                 } else {
-                    alert(data.message);
-                    fetchSystems();
+                    showToast(data.message, 'success');
                     bootstrap.Modal.getInstance(document.getElementById('csvMappingModal')).hide();
+                    await fetchSystems();
                 }
             })
             .catch(error => {
-                alert('Error importing CSV file');
+                showToast('Error importing CSV file: ' + error.message, 'error');
             });
         }
 
@@ -727,6 +757,27 @@
                     fetchSystems();
                 });
             }
+        }
+
+        // Toast notification system
+        function showToast(message, type = 'info', duration = 5000) {
+            const container = document.querySelector('.toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type} show`;
+            toast.innerHTML = `
+                <div class="toast-header">
+                    <strong class="me-auto">${type.charAt(0).toUpperCase() + type.slice(1)}</strong>
+                    <button type="button" class="btn-close" onclick="this.closest('.toast').remove()"></button>
+                </div>
+                <div class="toast-body">
+                    ${message}
+                </div>
+            `;
+            container.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.remove();
+            }, duration);
         }
 
         // Initial load
