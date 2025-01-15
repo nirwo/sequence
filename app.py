@@ -34,6 +34,7 @@ def index():
 @app.route('/api/systems', methods=['GET'])
 def get_systems():
     try:
+        print("Attempting to fetch systems from database...")  # Debug log
         # Test MongoDB connection first
         try:
             mongo.db.command('ping')
@@ -44,7 +45,7 @@ def get_systems():
         # Get all systems with proper error handling
         try:
             systems = list(mongo.db.systems.find())
-            print(f"Found {len(systems)} systems in database")
+            print(f"Found {len(systems)} systems")  # Debug log
         except Exception as e:
             print(f"Error querying systems: {str(e)}")
             return jsonify({'error': 'Error querying systems', 'systems': []}), 500
@@ -56,6 +57,11 @@ def get_systems():
         # Convert ObjectId to string for JSON serialization
         for system in systems:
             system['_id'] = str(system['_id'])
+            # Convert datetime objects to strings
+            if 'created_at' in system:
+                system['created_at'] = system['created_at'].isoformat()
+            if 'last_check' in system:
+                system['last_check'] = system['last_check'].isoformat()
             # Ensure all systems have required fields with defaults
             system['status'] = system.get('status', False)
             system['last_check'] = system.get('last_check', datetime.now())
@@ -68,8 +74,8 @@ def get_systems():
         print(f"Successfully processed {len(systems)} systems")
         return jsonify({'systems': systems})
     except Exception as e:
-        print(f"Unexpected error in get_systems: {str(e)}")
-        return jsonify({'error': str(e), 'systems': []}), 500
+        print(f"Error fetching systems: {str(e)}")  # Debug log
+        return jsonify({"error": f"Failed to fetch systems: {str(e)}"}), 500
 
 @app.route('/api/systems', methods=['POST'])
 def add_system():
