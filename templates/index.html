@@ -1431,9 +1431,19 @@
             const statusBadge = systemCard.querySelector('.status-badge');
             const statusText = systemCard.querySelector('.status-text');
             const loadingSpinner = systemCard.querySelector('.loading-spinner');
+            const testBtn = systemCard.querySelector('.test-btn');
             
+            // Remove loading state
             if (loadingSpinner) {
                 loadingSpinner.style.display = 'none';
+            }
+            
+            // Update button text
+            if (testBtn) {
+                testBtn.innerHTML = `
+                    <i class="fas fa-sync-alt loading-spinner" style="display: none;"></i>
+                    Test Now
+                `;
             }
 
             if (statusBadge) {
@@ -1442,7 +1452,7 @@
             }
 
             if (statusText) {
-                const systemName = systemCard.querySelector('.system-name').textContent || 'System';
+                const systemName = systemCard.querySelector('.system-name')?.textContent || 'System';
                 statusText.textContent = `${systemName} is ${status ? 'online' : 'offline'}`;
             }
         }
@@ -1451,10 +1461,16 @@
             const systemCard = document.querySelector(`[data-system-id="${systemId}"]`);
             if (!systemCard) return;
 
-            // Show loading spinner
+            // Show loading spinner and update button text
+            const testBtn = systemCard.querySelector('.test-btn');
             const loadingSpinner = systemCard.querySelector('.loading-spinner');
-            if (loadingSpinner) {
+            
+            if (testBtn && loadingSpinner) {
                 loadingSpinner.style.display = 'inline-block';
+                testBtn.innerHTML = `
+                    <i class="fas fa-sync-alt loading-spinner" style="display: inline-block;"></i>
+                    Testing...
+                `;
             }
 
             fetch(`/api/systems/${systemId}/test`, {
@@ -1481,10 +1497,103 @@
                 console.error('Error testing system:', error);
                 showToast('Error testing system: ' + error.message, 'error');
                 // Reset loading state
-                if (loadingSpinner) {
-                    loadingSpinner.style.display = 'none';
-                }
+                updateSystemStatus(systemId, false);
             });
+        }
+
+        function fetchSystems() {
+            const systemsContainer = document.getElementById('systemsContainer');
+            if (!systemsContainer) return;
+
+            // Clear existing content
+            systemsContainer.innerHTML = '';
+            
+            fetch('/api/systems')
+                .then(response => response.json())
+                .then(systems => {
+                    if (systems.length === 0) {
+                        systemsContainer.innerHTML = `
+                            <div class="col-12 text-center">
+                                <p class="text-muted">No systems found. Add a system to get started.</p>
+                            </div>
+                        `;
+                        return;
+                    }
+
+                    // Create and append system cards
+                    systems.forEach(system => {
+                        const card = createSystemCard(system);
+                        systemsContainer.appendChild(card);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error fetching systems:', error);
+                    showToast('Error fetching systems: ' + error.message, 'error');
+                });
+        }
+
+        function createSystemCard(system) {
+            const template = document.getElementById('systemCardTemplate');
+            const clone = document.importNode(template.content, true);
+            
+            // Set system ID and data attributes
+            const card = clone.querySelector('.card');
+            card.setAttribute('data-system-id', system._id);
+            
+            // Set system name and status
+            const systemName = clone.querySelector('.system-name');
+            systemName.textContent = system.name || 'Unnamed System';
+            
+            const statusBadge = clone.querySelector('.status-badge');
+            statusBadge.className = `status-badge badge ${system.status ? 'bg-success' : 'bg-danger'}`;
+            statusBadge.textContent = system.status ? 'Online' : 'Offline';
+            
+            const statusText = clone.querySelector('.status-text');
+            statusText.textContent = `${system.name || 'System'} is ${system.status ? 'online' : 'offline'}`;
+            
+            // Set system details
+            clone.querySelector('.app-name').textContent = system.app_name || 'N/A';
+            clone.querySelector('.target').textContent = system.target || 'N/A';
+            clone.querySelector('.check-type').textContent = system.check_type || 'ping';
+            clone.querySelector('.database').textContent = system.db_type !== 'N/A' ? 
+                `${system.db_type} (${system.db_name})` : 'N/A';
+            clone.querySelector('.owner').textContent = system.owner || 'N/A';
+            
+            // Set up cluster nodes if present
+            const clusterNodesDiv = clone.querySelector('.cluster-nodes');
+            if (system.cluster_nodes && system.cluster_nodes.length > 0) {
+                const nodesHtml = `
+                    <p class="mb-2"><strong>Cluster Nodes:</strong></p>
+                    <ul class="list-unstyled">
+                        ${system.cluster_nodes.map(node => `
+                            <li>
+                                <i class="fas fa-server me-2"></i>
+                                ${node.host}
+                                <span class="badge ${node.status ? 'bg-success' : 'bg-danger'} ms-2">
+                                    ${node.status ? 'Online' : 'Offline'}
+                                </span>
+                            </li>
+                        `).join('')}
+                    </ul>
+                `;
+                clusterNodesDiv.innerHTML = nodesHtml;
+            }
+            
+            // Set up button handlers
+            const testBtn = clone.querySelector('.test-btn');
+            testBtn.innerHTML = `
+                <i class="fas fa-sync-alt loading-spinner" style="display: none;"></i>
+                Test Now
+            `;
+            testBtn.onclick = () => testSystem(system._id);
+            
+            const editBtn = clone.querySelector('.edit-btn');
+            editBtn.onclick = () => editSystem(system._id);
+            
+            const deleteBtn = clone.querySelector('.delete-btn');
+            deleteBtn.onclick = () => deleteSystem(system._id);
+            
+            return clone;
         }
 
         // Add refresh button click handler
@@ -1569,67 +1678,6 @@
                     console.error('Error updating summary:', error);
                     showToast('Error updating summary: ' + error.message, 'error');
                 });
-        }
-
-        // Create system card
-        function createSystemCard(system) {
-            const template = document.getElementById('systemCardTemplate');
-            const clone = template.content.cloneNode(true);
-            
-            // Set system ID and data attributes
-            const card = clone.querySelector('.card');
-            card.setAttribute('data-system-id', system._id);
-            
-            // Set system name and status
-            const systemName = clone.querySelector('.system-name');
-            systemName.textContent = system.name;
-            
-            const statusBadge = clone.querySelector('.status-badge');
-            statusBadge.className = `status-badge badge ${system.status ? 'bg-success' : 'bg-danger'}`;
-            statusBadge.textContent = system.status ? 'Online' : 'Offline';
-            
-            const statusText = clone.querySelector('.status-text');
-            statusText.textContent = `${system.name} is ${system.status ? 'online' : 'offline'}`;
-            
-            // Set system details
-            clone.querySelector('.app-name').textContent = system.app_name || 'N/A';
-            clone.querySelector('.target').textContent = system.target || 'N/A';
-            clone.querySelector('.check-type').textContent = system.check_type || 'ping';
-            clone.querySelector('.database').textContent = system.db_type !== 'N/A' ? 
-                `${system.db_type} (${system.db_name})` : 'N/A';
-            clone.querySelector('.owner').textContent = system.owner || 'N/A';
-            
-            // Set up cluster nodes if present
-            const clusterNodesDiv = clone.querySelector('.cluster-nodes');
-            if (system.cluster_nodes && system.cluster_nodes.length > 0) {
-                const nodesHtml = `
-                    <p class="mb-2"><strong>Cluster Nodes:</strong></p>
-                    <ul class="list-unstyled">
-                        ${system.cluster_nodes.map(node => `
-                            <li>
-                                <i class="fas fa-server me-2"></i>
-                                ${node.host}
-                                <span class="badge ${node.status ? 'bg-success' : 'bg-danger'} ms-2">
-                                    ${node.status ? 'Online' : 'Offline'}
-                                </span>
-                            </li>
-                        `).join('')}
-                    </ul>
-                `;
-                clusterNodesDiv.innerHTML = nodesHtml;
-            }
-            
-            // Set up button handlers
-            const testBtn = clone.querySelector('.test-btn');
-            testBtn.onclick = () => testSystem(system._id);
-            
-            const editBtn = clone.querySelector('.edit-btn');
-            editBtn.onclick = () => editSystem(system._id);
-            
-            const deleteBtn = clone.querySelector('.delete-btn');
-            deleteBtn.onclick = () => deleteSystem(system._id);
-            
-            return clone;
         }
 
         // Initialize page
