@@ -281,16 +281,17 @@
                                 <input type="text" class="form-control" name="mount_points">
                             </div>
                             <div class="mb-3">
-                                <label class="form-label">Shutdown Sequence (comma-separated)</label>
-                                <input type="text" class="form-control" name="shutdown_sequence">
+                                <label class="form-label">Shutdown Sequence (semicolon-separated)</label>
+                                <input type="text" class="form-control" name="shutdown_sequence" placeholder="e.g., service nginx stop;service app stop">
+                                <div class="form-text">Enter commands in order, separated by semicolons</div>
                             </div>
                         </div>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="button" class="btn btn-secondary" onclick="previousStep(currentStep)">Previous</button>
-                        <button type="button" class="btn btn-primary" onclick="nextStep(currentStep)">Next</button>
-                        <button type="button" class="btn btn-success d-none" onclick="submitWizard()">Submit</button>
+                        <button type="button" class="btn btn-secondary prev-btn" onclick="previousStep()">Previous</button>
+                        <button type="button" class="btn btn-primary next-btn" onclick="nextStep()">Next</button>
+                        <button type="button" class="btn btn-success submit-btn d-none" onclick="submitWizard()">Submit</button>
                     </div>
                 </form>
             </div>
@@ -607,50 +608,60 @@
 
         // Wizard navigation functions
         function nextStep() {
-            const form = document.getElementById('addSystemWizardForm');
-            const currentStepElement = document.querySelector(`.wizard-step[data-step="${currentStep}"]`);
-            
-            // Validate current step fields
-            let isValid = true;
-            currentStepElement.querySelectorAll('input[required], select[required]').forEach(input => {
-                if (!input.value) {
-                    input.classList.add('is-invalid');
-                    isValid = false;
-                } else {
-                    input.classList.remove('is-invalid');
+            if (currentStep < totalSteps) {
+                const currentStepElement = document.querySelector(`.wizard-step[data-step="${currentStep}"]`);
+                const form = document.getElementById('addSystemWizardForm');
+                
+                // Validate current step
+                const inputs = currentStepElement.querySelectorAll('input[required], select[required]');
+                let isValid = true;
+                
+                inputs.forEach(input => {
+                    if (!input.value.trim()) {
+                        input.classList.add('is-invalid');
+                        isValid = false;
+                    } else {
+                        input.classList.remove('is-invalid');
+                    }
+                });
+                
+                if (!isValid) {
+                    return;
                 }
-            });
-
-            if (!isValid) {
-                showToast('Please fill in all required fields', 'error');
-                return;
+                
+                currentStep++;
+                showStep(currentStep);
             }
-
-            const nextStep = currentStep + 1;
-            showStep(nextStep);
         }
 
         function previousStep() {
-            showStep(currentStep - 1);
+            if (currentStep > 1) {
+                currentStep--;
+                showStep(currentStep);
+            }
         }
 
         function showStep(step) {
             // Hide all steps
-            document.querySelectorAll('.wizard-step').forEach(s => s.classList.add('d-none'));
+            document.querySelectorAll('.wizard-step').forEach(stepElement => {
+                stepElement.classList.add('d-none');
+            });
+            
             // Show current step
-            document.querySelector(`.wizard-step[data-step="${step}"]`).classList.remove('d-none');
-            
-            // Update buttons visibility
-            const prevBtn = document.querySelector('#addSystemWizardModal .btn-secondary:not([data-bs-dismiss])');
-            const nextBtn = document.querySelector('#addSystemWizardModal .btn-primary');
-            const submitBtn = document.querySelector('#addSystemWizardModal .btn-success');
-            
-            // Show/hide previous button
-            if (prevBtn) {
-                prevBtn.style.display = step === 1 ? 'none' : '';
+            const currentStepElement = document.querySelector(`.wizard-step[data-step="${step}"]`);
+            if (currentStepElement) {
+                currentStepElement.classList.remove('d-none');
             }
             
-            // Show/hide next and submit buttons
+            // Update buttons
+            const prevBtn = document.querySelector('.prev-btn');
+            const nextBtn = document.querySelector('.next-btn');
+            const submitBtn = document.querySelector('.submit-btn');
+            
+            if (prevBtn) {
+                prevBtn.style.display = step === 1 ? 'none' : 'inline-block';
+            }
+            
             if (nextBtn && submitBtn) {
                 if (step === totalSteps) {
                     nextBtn.classList.add('d-none');
@@ -665,47 +676,49 @@
             updateProgressBar(step);
         }
 
-        function updateProgressBar(currentStep) {
-            const totalSteps = document.querySelectorAll('.wizard-step').length;
-            const progress = (currentStep / totalSteps) * 100;
-            document.querySelector('.progress-bar').style.width = `${progress}%`;
-            
-            document.querySelectorAll('.step-indicator').forEach((indicator, index) => {
-                if (index + 1 < currentStep) {
-                    indicator.classList.add('completed');
-                } else if (index + 1 === currentStep) {
-                    indicator.classList.add('active');
-                } else {
-                    indicator.classList.remove('active', 'completed');
-                }
-            });
+        function updateProgressBar(step) {
+            const progress = ((step - 1) / (totalSteps - 1)) * 100;
+            const progressBar = document.querySelector('.progress-bar');
+            if (progressBar) {
+                progressBar.style.width = `${progress}%`;
+                progressBar.setAttribute('aria-valuenow', progress);
+            }
         }
 
         function submitWizard() {
-            const wizardForm = document.getElementById('addSystemWizardForm');
-            if (!wizardForm) {
+            const form = document.getElementById('addSystemWizardForm');
+            if (!form) {
                 showToast('Form not found', 'error');
                 return;
             }
 
             // Validate form
-            if (!wizardForm.checkValidity()) {
-                wizardForm.reportValidity();
+            const inputs = form.querySelectorAll('input[required], select[required]');
+            let isValid = true;
+            
+            inputs.forEach(input => {
+                if (!input.value.trim()) {
+                    input.classList.add('is-invalid');
+                    isValid = false;
+                } else {
+                    input.classList.remove('is-invalid');
+                }
+            });
+            
+            if (!isValid) {
                 return;
             }
 
             // Get form data
-            const formData = new FormData(wizardForm);
+            const formData = new FormData(form);
             const system = Object.fromEntries(formData.entries());
 
-            // Handle cluster nodes
-            if (system.cluster_nodes) {
-                system.cluster_nodes = system.cluster_nodes.split(',').map(node => node.trim()).filter(node => node);
-                // Set target as first node if empty
-                if (!system.target && system.cluster_nodes.length > 0) {
-                    system.target = system.cluster_nodes[0];
+            // Handle array fields
+            ['cluster_nodes', 'mount_points', 'shutdown_sequence'].forEach(field => {
+                if (system[field]) {
+                    system[field] = system[field].split(';').map(item => item.trim()).filter(item => item);
                 }
-            }
+            });
 
             // Add system
             fetch('/api/systems', {
@@ -722,7 +735,7 @@
                 } else {
                     showToast('System added successfully', 'success');
                     // Reset form and close modal
-                    wizardForm.reset();
+                    form.reset();
                     bootstrap.Modal.getInstance(document.getElementById('addSystemWizardModal')).hide();
                     // Refresh systems table
                     fetchSystems();
@@ -741,6 +754,10 @@
             if (form) {
                 form.reset();
             }
+            // Reset validation state
+            form.querySelectorAll('.is-invalid').forEach(input => {
+                input.classList.remove('is-invalid');
+            });
         });
 
         // CSV Import and Mapping Functions
