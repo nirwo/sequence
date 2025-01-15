@@ -718,50 +718,54 @@
 
         // Fetch systems from the server
         function fetchSystems() {
-            const systemsContainer = document.getElementById('systemsContainer');
-            if (!systemsContainer) {
-                console.error('Systems container not found');
-                return;
-            }
-
-            // Clear existing content
-            systemsContainer.innerHTML = '';
-            
+            showToast('Loading systems...', 'info');
             fetch('/api/systems')
-                .then(response => response.json())
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
                 .then(data => {
-                    const systems = data.systems || [];
-                    if (systems.length === 0) {
+                    if (data.error) {
+                        throw new Error(data.error);
+                    }
+                    
+                    const systemsContainer = document.getElementById('systemsContainer');
+                    systemsContainer.innerHTML = ''; // Clear existing cards
+                    
+                    if (!data.systems || data.systems.length === 0) {
                         systemsContainer.innerHTML = `
                             <div class="col-12 text-center">
-                                <p class="text-muted">No systems found. Add a system to get started.</p>
-                            </div>
-                        `;
+                                <div class="alert alert-info">
+                                    <i class="fas fa-info-circle"></i> No systems found. Click "Add System" to get started.
+                                </div>
+                            </div>`;
                         return;
                     }
-
-                    // Create and append system cards
-                    const fragment = document.createDocumentFragment();
-                    systems.forEach(system => {
-                        try {
-                            const card = createSystemCard(system);
-                            if (card) {
-                                fragment.appendChild(card);
-                            }
-                        } catch (error) {
-                            console.error('Error creating card for system:', system, error);
-                        }
+                    
+                    // Sort systems by name
+                    data.systems.sort((a, b) => a.name.localeCompare(b.name));
+                    
+                    data.systems.forEach(system => {
+                        createSystemCard(system);
                     });
-                    systemsContainer.appendChild(fragment);
+                    
+                    showToast(`Loaded ${data.systems.length} systems`, 'success');
+                    updateSummary();
                 })
                 .catch(error => {
                     console.error('Error fetching systems:', error);
-                    showToast('Error fetching systems: ' + error.message, 'error');
-                    systemsContainer.innerHTML = `
-                        <div class="col-12 text-center">
-                            <p class="text-danger">Error loading systems. Please try again later.</p>
-                        </div>
-                    `;
+                    document.getElementById('systemsContainer').innerHTML = `
+                        <div class="col-12">
+                            <div class="alert alert-danger">
+                                <i class="fas fa-exclamation-triangle"></i> 
+                                Error loading systems: ${error.message}
+                                <br>
+                                <small>Please check your connection and try refreshing the page.</small>
+                            </div>
+                        </div>`;
+                    showToast('Failed to load systems. Please check your connection.', 'error');
                 });
         }
 

@@ -16,10 +16,39 @@ import platform
 from requests.exceptions import RequestException
 import socket
 from pymongo.errors import DuplicateKeyError
+import sys
 
 app = Flask(__name__, static_url_path='/static', static_folder='static')
+
+# MongoDB configuration with retry and timeout settings
 app.config["MONGO_URI"] = os.getenv("MONGO_URI", "mongodb://localhost:27017/app_monitor")
-mongo = PyMongo(app)
+app.config["MONGO_CONNECT_TIMEOUT_MS"] = 5000
+app.config["MONGO_SOCKET_TIMEOUT_MS"] = 5000
+app.config["MONGO_SERVER_SELECTION_TIMEOUT_MS"] = 5000
+
+# Initialize MongoDB with retries
+def init_mongo():
+    retry_count = 0
+    max_retries = 3
+    while retry_count < max_retries:
+        try:
+            mongo = PyMongo(app)
+            # Test the connection
+            mongo.db.command('ping')
+            print("Successfully connected to MongoDB")
+            return mongo
+        except Exception as e:
+            retry_count += 1
+            print(f"Failed to connect to MongoDB (attempt {retry_count}/{max_retries}): {str(e)}")
+            if retry_count == max_retries:
+                raise
+            time.sleep(2)
+
+try:
+    mongo = init_mongo()
+except Exception as e:
+    print(f"Fatal: Could not connect to MongoDB: {str(e)}")
+    sys.exit(1)
 
 def parse_json(data):
     return json.loads(json_util.dumps(data))
@@ -31,13 +60,29 @@ def index():
 @app.route('/api/systems', methods=['GET'])
 def get_systems():
     try:
+        # Test MongoDB connection first
+        mongo.db.command('ping')
+        
+        # Get all systems with proper error handling
         systems = list(mongo.db.systems.find())
+        if not systems:
+            print("No systems found in database")
+            return jsonify({'systems': []})
+            
         # Convert ObjectId to string for JSON serialization
         for system in systems:
             system['_id'] = str(system['_id'])
+            # Ensure all systems have required fields with defaults
+            system['status'] = system.get('status', False)
+            system['last_check'] = system.get('last_check', datetime.now())
+            system['sequence_status'] = system.get('sequence_status', 'not_started')
+            system['last_error'] = system.get('last_error', '')
+        
+        print(f"Successfully retrieved {len(systems)} systems")
         return jsonify({'systems': systems})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        print(f"Error retrieving systems: {str(e)}")
+        return jsonify({'error': str(e), 'systems': []}), 500
 
 @app.route('/api/systems', methods=['POST'])
 def add_system():
