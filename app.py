@@ -535,14 +535,36 @@ def test_ping(host):
         host = host.replace('http://', '').replace('https://', '')
         # Remove path and query parameters
         host = host.split('/')[0]
+        # Remove port if present
+        host = host.split(':')[0]
+        
+        print(f"Attempting to ping host: {host}")
         
         # Ping command parameters
         param = '-n' if platform.system().lower() == 'windows' else '-c'
         command = ['ping', param, '1', host]
         
-        return subprocess.call(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0
-    except:
-        return False
+        # Use subprocess.Popen to get output
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True
+        )
+        stdout, stderr = process.communicate()
+        
+        success = process.returncode == 0
+        print(f"Ping output for {host}:")
+        print(stdout)
+        if stderr:
+            print(f"Ping error for {host}:")
+            print(stderr)
+            
+        return success, stdout if success else f"Host {host} is not responding. {stderr if stderr else ''}"
+    except Exception as e:
+        error_msg = f"Error pinging {host}: {str(e)}"
+        print(error_msg)
+        return False, error_msg
 
 @app.route('/api/systems/check/<system_id>')
 def check_system(system_id):
@@ -560,16 +582,16 @@ def check_system(system_id):
                 try:
                     status = test_http(target)
                     if not status:
-                        error_message = "HTTP check failed - server not responding or invalid status code"
+                        error_message = f"HTTP check failed for {target} - server not responding or invalid status code"
                 except Exception as e:
-                    error_message = f"HTTP check error: {str(e)}"
+                    error_message = f"HTTP check error for {target}: {str(e)}"
             else:  # default to ping
                 try:
-                    status = test_ping(target)
+                    status, message = test_ping(target)
                     if not status:
-                        error_message = "Ping failed - host not responding"
+                        error_message = message
                 except Exception as e:
-                    error_message = f"Ping error: {str(e)}"
+                    error_message = f"Ping error for {target}: {str(e)}"
 
         # Update system status and last check time
         update_data = {
@@ -587,7 +609,8 @@ def check_system(system_id):
         return jsonify({
             'status': status,
             'last_check': datetime.now().isoformat(),
-            'error': error_message
+            'error': error_message,
+            'target': target
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -608,16 +631,16 @@ def check_all_systems():
                     try:
                         status = test_http(target)
                         if not status:
-                            error_message = "HTTP check failed - server not responding or invalid status code"
+                            error_message = f"HTTP check failed for {target} - server not responding or invalid status code"
                     except Exception as e:
-                        error_message = f"HTTP check error: {str(e)}"
+                        error_message = f"HTTP check error for {target}: {str(e)}"
                 else:  # default to ping
                     try:
-                        status = test_ping(target)
+                        status, message = test_ping(target)
                         if not status:
-                            error_message = "Ping failed - host not responding"
+                            error_message = message
                     except Exception as e:
-                        error_message = f"Ping error: {str(e)}"
+                        error_message = f"Ping error for {target}: {str(e)}"
             
             # Update system status and last check time
             update_data = {
@@ -636,7 +659,8 @@ def check_all_systems():
                 'id': str(system['_id']),
                 'name': system.get('name'),
                 'status': status,
-                'error': error_message
+                'error': error_message,
+                'target': target
             })
         
         return jsonify(results)

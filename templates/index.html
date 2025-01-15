@@ -1152,10 +1152,14 @@
 
         // Add refresh button click handler
         document.getElementById('refreshButton').addEventListener('click', function() {
+            showToast('Checking all systems...', 'info');
             fetch('/api/systems/check_all')
                 .then(response => response.json())
                 .then(results => {
-                    showToast('Systems check completed', 'success');
+                    const succeeded = results.filter(r => r.status).length;
+                    const failed = results.length - succeeded;
+                    const message = `Check completed: ${succeeded} online, ${failed} offline`;
+                    showToast(message, failed === 0 ? 'success' : 'warning');
                     fetchSystems(); // Refresh the table
                 })
                 .catch(error => {
@@ -1169,14 +1173,15 @@
                 .then(response => response.json())
                 .then(result => {
                     if (result.error) {
-                        showToast(result.error, 'error');
+                        const message = `Check failed for ${result.target}: ${result.error}`;
+                        showToast(message, 'error');
                     } else {
                         const message = result.status ? 
-                            'System is online' : 
-                            `System is offline${result.error ? ': ' + result.error : ''}`;
+                            `${result.target} is online` : 
+                            `${result.target} is offline${result.error ? ': ' + result.error : ''}`;
                         showToast(message, result.status ? 'success' : 'warning');
-                        fetchSystems(); // Refresh the table
                     }
+                    fetchSystems(); // Refresh the table
                 })
                 .catch(error => {
                     showToast('Error checking system: ' + error.message, 'error');
