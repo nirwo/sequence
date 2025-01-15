@@ -234,7 +234,7 @@
                             <li>
                                 <label class="dropdown-item" style="cursor: pointer;">
                                     <i class="fas fa-file-upload"></i> Import CSV
-                                    <input type="file" id="csvFileInput" accept=".csv" style="display: none;" onchange="handleFileSelect(this)">
+                                    <input type="file" id="csvFile" accept=".csv" style="display: none;" onchange="handleFileSelect(this)">
                                 </label>
                             </li>
                             <li><a class="dropdown-item" href="#" onclick="downloadExampleCSV()">
@@ -1073,37 +1073,75 @@
                 `;
                 mappingFields.appendChild(div);
             });
+
+            // Add import options
+            const optionsDiv = document.createElement('div');
+            optionsDiv.className = 'mb-3 border-top pt-3';
+            optionsDiv.innerHTML = `
+                <h6>Import Options</h6>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="skipDuplicates" checked>
+                    <label class="form-check-label" for="skipDuplicates">
+                        Skip duplicate systems
+                    </label>
+                </div>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="updateExisting">
+                    <label class="form-check-label" for="updateExisting">
+                        Update existing systems
+                    </label>
+                </div>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="autoMapFields" checked>
+                    <label class="form-check-label" for="autoMapFields">
+                        Auto-map fields
+                    </label>
+                </div>
+            `;
+            mappingFields.appendChild(optionsDiv);
+
+            // Add results container
+            const resultsDiv = document.createElement('div');
+            resultsDiv.id = 'importResults';
+            resultsDiv.style.display = 'none';
+            mappingFields.appendChild(resultsDiv);
         }
 
         // Import mapped CSV
         function importMappedCSV() {
+            const formData = new FormData();
+            const file = document.getElementById('csvFile').files[0];
+            if (!file) {
+                showToast('Please select a CSV file', 'error');
+                return;
+            }
+
+            formData.append('file', file);
+
+            // Get mapping from UI
+            const mappingFields = document.getElementById('mappingFields');
             const mapping = {};
-            const selects = document.querySelectorAll('#mappingFields select');
-            
-            selects.forEach(select => {
+            mappingFields.querySelectorAll('select').forEach(select => {
                 if (select.value) {
-                    mapping[select.dataset.field] = select.value;
+                    mapping[select.getAttribute('data-field')] = select.value;
                 }
             });
 
-            // Check required fields
-            const requiredFields = ['name', 'target'];
-            const missingFields = requiredFields.filter(field => !mapping[field]);
-            
-            if (missingFields.length > 0) {
-                showToast(`Missing required fields: ${missingFields.join(', ')}`, 'error');
-                return;
-            }
+            // Get import options
+            const options = {
+                skip_duplicates: document.getElementById('skipDuplicates').checked,
+                update_existing: document.getElementById('updateExisting').checked,
+                auto_map_fields: document.getElementById('autoMapFields').checked
+            };
 
-            const fileInput = document.getElementById('csvFileInput');
-            if (!fileInput.files || !fileInput.files[0]) {
-                showToast('No file selected', 'error');
-                return;
-            }
-
-            const formData = new FormData();
-            formData.append('file', fileInput.files[0]);
             formData.append('mapping', JSON.stringify(mapping));
+            formData.append('options', JSON.stringify(options));
+
+            // Show loading state
+            const importButton = document.querySelector('#csvMappingModal .btn-primary');
+            const originalText = importButton.innerHTML;
+            importButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Importing...';
+            importButton.disabled = true;
 
             fetch('/api/systems/import', {
                 method: 'POST',
@@ -1111,24 +1149,53 @@
             })
             .then(response => response.json())
             .then(data => {
-                if (data.error) {
-                    throw new Error(data.error);
+                if (data.success) {
+                    // Show success message with details
+                    showToast(data.message, 'success');
+                    
+                    // Show detailed results
+                    const resultsHtml = `
+                        <div class="alert alert-info">
+                            <h6>Import Results:</h6>
+                            <ul>
+                                <li>Total rows: ${data.results.total}</li>
+                                <li>Added: ${data.results.added}</li>
+                                <li>Updated: ${data.results.updated}</li>
+                                <li>Skipped: ${data.results.skipped}</li>
+                                <li>Failed: ${data.results.failed}</li>
+                            </ul>
+                            ${data.results.warnings.length > 0 ? `
+                                <h6>Warnings:</h6>
+                                <ul class="text-warning">
+                                    ${data.results.warnings.map(w => `<li>${w}</li>`).join('')}
+                                </ul>
+                            ` : ''}
+                            ${data.results.errors.length > 0 ? `
+                                <h6>Errors:</h6>
+                                <ul class="text-danger">
+                                    ${data.results.errors.map(e => `<li>${e}</li>`).join('')}
+                                </ul>
+                            ` : ''}
+                        </div>
+                    `;
+                    
+                    document.getElementById('importResults').innerHTML = resultsHtml;
+                    document.getElementById('importResults').style.display = 'block';
+                    
+                    // Refresh the systems list
+                    fetchSystems();
+                } else {
+                    showToast(data.error || 'Import failed', 'error');
                 }
-                
-                // Handle warnings if present
-                if (data.warnings && data.warnings.length > 0) {
-                    showImportWarnings(data.warnings);
-                    return;
-                }
-
-                // Close modal and show success message
-                bootstrap.Modal.getInstance(document.getElementById('csvMappingModal')).hide();
-                showToast(data.message, 'success');
-                fetchSystems();
             })
             .catch(error => {
-                console.error('Import error:', error);
-                showToast('Error importing systems: ' + error.message, 'error');
+                console.error('Error importing CSV:', error);
+                showToast('Error importing CSV: ' + error.message, 'error');
+            })
+            .finally(() => {
+                // Reset button state
+                importButton.innerHTML = originalText;
+                importButton.disabled = false;
             });
         }
 
