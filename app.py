@@ -725,34 +725,55 @@ def update_sequence_status(system_id):
 @app.route('/api/systems/summary')
 def get_systems_summary():
     try:
-        pipeline = [
-            {
-                '$group': {
-                    '_id': None,
-                    'total': {'$sum': 1},
-                    'online': {'$sum': {'$cond': ['$status', 1, 0]}},
-                    'offline': {'$sum': {'$cond': ['$status', 0, 1]}},
-                    'sequence_not_started': {'$sum': {'$cond': [{'$eq': ['$sequence_status', 'not_started']}, 1, 0]}},
-                    'sequence_in_progress': {'$sum': {'$cond': [{'$eq': ['$sequence_status', 'in_progress']}, 1, 0]}},
-                    'sequence_completed': {'$sum': {'$cond': [{'$eq': ['$sequence_status', 'completed']}, 1, 0]}},
-                    'db_online': {'$sum': {'$cond': ['$db_status', 1, 0]}},
-                    'db_offline': {'$sum': {'$cond': [{'$and': [{'$ne': ['$db_status', null]}, {'$eq': ['$db_status', false]}]}, 1, 0]}},
-                }
-            }
-        ]
+        # Get all systems
+        systems = list(mongo.db.systems.find())
         
-        summary = list(mongo.db.systems.aggregate(pipeline))
-        return jsonify(summary[0] if summary else {
-            'total': 0,
-            'online': 0,
-            'offline': 0,
-            'sequence_not_started': 0,
-            'sequence_in_progress': 0,
-            'sequence_completed': 0,
-            'db_online': 0,
-            'db_offline': 0
+        # Initialize counters
+        total_systems = len(systems)
+        online_systems = sum(1 for system in systems if system.get('status', False))
+        offline_systems = total_systems - online_systems
+        
+        # Count database statuses
+        db_total = sum(1 for system in systems if system.get('db_name'))
+        db_online = sum(1 for system in systems if system.get('db_status', False))
+        db_offline = db_total - db_online
+        
+        # Count sequence statuses
+        sequence_counts = {
+            'not_started': 0,
+            'in_progress': 0,
+            'completed': 0
+        }
+        for system in systems:
+            status = system.get('sequence_status', 'not_started')
+            sequence_counts[status] = sequence_counts.get(status, 0) + 1
+        
+        # Get recent errors
+        recent_errors = []
+        for system in systems:
+            if system.get('last_error'):
+                recent_errors.append({
+                    'system_name': system.get('name', 'Unknown'),
+                    'error': system.get('last_error'),
+                    'timestamp': system.get('last_check', datetime.now()).isoformat() if system.get('last_check') else None
+                })
+        
+        # Sort errors by timestamp (most recent first)
+        recent_errors.sort(key=lambda x: x['timestamp'] if x['timestamp'] else '', reverse=True)
+        recent_errors = recent_errors[:5]  # Keep only 5 most recent errors
+        
+        return jsonify({
+            'total_systems': total_systems,
+            'online_systems': online_systems,
+            'offline_systems': offline_systems,
+            'db_total': db_total,
+            'db_online': db_online,
+            'db_offline': db_offline,
+            'sequence_status': sequence_counts,
+            'recent_errors': recent_errors
         })
     except Exception as e:
+        print(f"Error getting systems summary: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/systems/check_all')
@@ -762,10 +783,49 @@ def check_all_systems():
         results = []
         
         for system in systems:
-            results.append(test_system(system))
+            try:
+                result = test_system(system)
+                system_id = str(system['_id'])
+                
+                # Update system status and last check time
+                update_data = {
+                    'status': result['status'],
+                    'last_check': datetime.now(),
+                    'db_status': result['db_status'],
+                    'http_status': result['http_status'],
+                    'http_error': result['http_error'],
+                    'ping_status': result['ping_status'],
+                    'ping_error': result['ping_error'],
+                    'last_error': '; '.join(result['errors']) if result['errors'] else None
+                }
+                
+                # Update cluster nodes if present
+                if result.get('cluster_nodes'):
+                    update_data['cluster_nodes'] = result['cluster_nodes']
+                
+                mongo.db.systems.update_one(
+                    {'_id': ObjectId(system_id)},
+                    {'$set': update_data}
+                )
+                
+                results.append({
+                    'system_id': system_id,
+                    'name': system.get('name', 'Unknown'),
+                    'status': result['status'],
+                    'errors': result['errors']
+                })
+            except Exception as e:
+                print(f"Error checking system {system.get('name', 'Unknown')}: {str(e)}")
+                results.append({
+                    'system_id': str(system['_id']),
+                    'name': system.get('name', 'Unknown'),
+                    'status': False,
+                    'errors': [str(e)]
+                })
         
-        return jsonify(results)
+        return jsonify({'results': results})
     except Exception as e:
+        print(f"Error checking all systems: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 def test_http(url):

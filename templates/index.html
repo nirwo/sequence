@@ -190,15 +190,15 @@
                     <div class="card-body">
                         <div class="d-flex justify-content-between mb-3">
                             <span>Total Systems:</span>
-                            <span id="total-systems" class="badge bg-secondary">0</span>
+                            <span id="totalSystems" class="badge bg-secondary">0</span>
                         </div>
                         <div class="d-flex justify-content-between mb-3">
                             <span>Online:</span>
-                            <span id="online-systems" class="badge bg-success">0</span>
+                            <span id="onlineSystems" class="badge bg-success">0</span>
                         </div>
                         <div class="d-flex justify-content-between mb-3">
                             <span>Offline:</span>
-                            <span id="offline-systems" class="badge bg-danger">0</span>
+                            <span id="offlineSystems" class="badge bg-danger">0</span>
                         </div>
                     </div>
                 </div>
@@ -210,12 +210,16 @@
                     </div>
                     <div class="card-body">
                         <div class="d-flex justify-content-between mb-3">
+                            <span>Total Databases:</span>
+                            <span id="dbTotal" class="badge bg-secondary">0</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-3">
                             <span>DB Services Online:</span>
-                            <span id="db-online" class="badge bg-success">0</span>
+                            <span id="dbOnline" class="badge bg-success">0</span>
                         </div>
                         <div class="d-flex justify-content-between mb-3">
                             <span>DB Services Offline:</span>
-                            <span id="db-offline" class="badge bg-danger">0</span>
+                            <span id="dbOffline" class="badge bg-danger">0</span>
                         </div>
                     </div>
                 </div>
@@ -230,16 +234,29 @@
                     <div class="card-body">
                         <div class="d-flex justify-content-between mb-3">
                             <span>Not Started:</span>
-                            <span id="sequence-not-started" class="badge bg-secondary">0</span>
+                            <span id="notStartedCount" class="badge bg-secondary">0</span>
                         </div>
                         <div class="d-flex justify-content-between mb-3">
                             <span>In Progress:</span>
-                            <span id="sequence-in-progress" class="badge bg-warning">0</span>
+                            <span id="inProgressCount" class="badge bg-warning">0</span>
                         </div>
                         <div class="d-flex justify-content-between mb-3">
                             <span>Completed:</span>
-                            <span id="sequence-completed" class="badge bg-success">0</span>
+                            <span id="completedCount" class="badge bg-success">0</span>
                         </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Recent Errors</h5>
+                    </div>
+                    <div class="card-body">
+                        <ul class="list-group" id="recentErrors">
+                        </ul>
                     </div>
                 </div>
             </div>
@@ -1384,14 +1401,16 @@
             showToast('Checking all systems...', 'info');
             fetch('/api/systems/check_all')
                 .then(response => response.json())
-                .then(results => {
-                    const succeeded = results.filter(r => r.status).length;
-                    const failed = results.length - succeeded;
-                    const message = `Check completed: ${succeeded} online, ${failed} offline`;
-                    showToast(message, failed === 0 ? 'success' : 'warning');
-                    fetchSystems(); // Refresh the table
+                .then(data => {
+                    if (data.error) {
+                        throw new Error(data.error);
+                    }
+                    fetchSystems();  // Refresh the systems table
+                    updateSummary(); // Refresh the summary
+                    showToast('All systems checked successfully', 'success');
                 })
                 .catch(error => {
+                    console.error('Error checking systems:', error);
                     showToast('Error checking systems: ' + error.message, 'error');
                 });
         });
@@ -1417,174 +1436,59 @@
                 });
         }
 
-        // Modify displaySystems to show last error
-        function displaySystems(systems) {
-            const tbody = document.querySelector('#systemsTable tbody');
-            tbody.innerHTML = '';
-
-            systems.forEach(system => {
-                const systemId = system._id.$oid || system._id;
-                const row = document.createElement('tr');
-                const statusClass = system.status ? 'bg-success' : 'bg-danger';
-                const statusText = system.status ? 'Online' : 'Offline';
-                const lastCheck = system.last_check ? new Date(system.last_check).toLocaleString() : 'Never';
-                const errorTooltip = system.last_error ? `data-bs-toggle="tooltip" title="${system.last_error}"` : '';
-                
-                row.innerHTML = `
-                    <td>${system.name}</td>
-                    <td>${system.app_name || 'N/A'}</td>
-                    <td>${system.target || 'N/A'}</td>
-                    <td>${system.db_name || 'N/A'}</td>
-                    <td>
-                        <span class="status-badge ${system.status ? 'online' : 'offline'}"
-                              title="${system.last_error || (system.status ? 'System is online' : 'System is offline')}">
-                            ${system.status ? 'Online' : 'Offline'}
-                        </span>
-                    </td>
-                    <td>${lastCheck}</td>
-                    <td>
-                        <button class="btn btn-sm btn-success" onclick="checkSystem('${systemId}')"
-                                title="Test system connectivity and services"
-                                aria-label="Trigger system test">
-                            <i class="fas fa-sync-alt"></i> Trigger Test
-                        </button>
-                        <button class="btn btn-sm btn-info" onclick="editSystem('${systemId}')"
-                                title="Edit system configuration"
-                                aria-label="Edit system">
-                            <i class="fas fa-edit"></i> Edit
-                        </button>
-                        <button class="btn btn-sm btn-danger" onclick="deleteSystem('${systemId}')"
-                                title="Delete this system"
-                                aria-label="Delete system">
-                            <i class="fas fa-trash"></i> Delete
-                        </button>
-                    </td>
-                `;
-                tbody.appendChild(row);
-            });
-
-            // Initialize tooltips
-            var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-            var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-                return new bootstrap.Tooltip(tooltipTriggerEl);
-            });
-        }
-
-        // Add updateSummary function
+        // Update summary
         function updateSummary() {
             fetch('/api/systems/summary')
                 .then(response => response.json())
                 .then(data => {
-                    document.getElementById('total-systems').textContent = data.total;
-                    document.getElementById('online-systems').textContent = data.online;
-                    document.getElementById('offline-systems').textContent = data.offline;
-                    document.getElementById('db-online').textContent = data.db_online;
-                    document.getElementById('db-offline').textContent = data.db_offline;
-                    document.getElementById('sequence-not-started').textContent = data.sequence_not_started;
-                    document.getElementById('sequence-in-progress').textContent = data.sequence_in_progress;
-                    document.getElementById('sequence-completed').textContent = data.sequence_completed;
+                    // Update system counts
+                    document.getElementById('totalSystems').textContent = data.total_systems;
+                    document.getElementById('onlineSystems').textContent = data.online_systems;
+                    document.getElementById('offlineSystems').textContent = data.offline_systems;
+                    
+                    // Update database counts
+                    document.getElementById('dbTotal').textContent = data.db_total;
+                    document.getElementById('dbOnline').textContent = data.db_online;
+                    document.getElementById('dbOffline').textContent = data.db_offline;
+                    
+                    // Update sequence status
+                    document.getElementById('notStartedCount').textContent = data.sequence_status.not_started;
+                    document.getElementById('inProgressCount').textContent = data.sequence_status.in_progress;
+                    document.getElementById('completedCount').textContent = data.sequence_status.completed;
+                    
+                    // Update recent errors
+                    const recentErrorsList = document.getElementById('recentErrors');
+                    recentErrorsList.innerHTML = '';
+                    
+                    if (data.recent_errors && data.recent_errors.length > 0) {
+                        data.recent_errors.forEach(error => {
+                            const li = document.createElement('li');
+                            li.className = 'list-group-item';
+                            li.innerHTML = `
+                                <strong>${error.system_name}</strong>: ${error.error}
+                                ${error.timestamp ? `<br><small class="text-muted">at ${new Date(error.timestamp).toLocaleString()}</small>` : ''}
+                            `;
+                            recentErrorsList.appendChild(li);
+                        });
+                    } else {
+                        recentErrorsList.innerHTML = '<li class="list-group-item">No recent errors</li>';
+                    }
                 })
-                .catch(error => console.error('Error updating summary:', error));
+                .catch(error => {
+                    console.error('Error updating summary:', error);
+                    showToast('Error updating summary: ' + error.message, 'error');
+                });
         }
 
-        // Update sequence status
-        function updateSequenceStatus(systemId, status) {
-            fetch(`/api/systems/sequence/${systemId}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ status: status })
-            })
-            .then(response => response.json())
-            .then(result => {
-                if (result.error) {
-                    showToast(result.error, 'error');
-                } else {
-                    showToast('Sequence status updated', 'success');
-                    fetchSystems();
-                    updateSummary();
-                }
-            })
-            .catch(error => {
-                showToast('Error updating sequence status: ' + error.message, 'error');
-            });
-        }
-
-        // Modify the systems table to include sequence status and tooltips
-        function createSystemRow(system) {
-            const row = document.createElement('tr');
-            row.innerHTML = `
-                <td>${system.name}</td>
-                <td>${system.app_name || 'N/A'}</td>
-                <td>
-                    ${system.target || 'N/A'}
-                    ${system.cluster_nodes ? 
-                        `<br><small>Cluster Nodes: ${system.cluster_nodes.map(node => 
-                            `${node.host} (${node.status ? 'Online' : 'Offline'})`).join(', ')}</small>` 
-                        : ''}
-                </td>
-                <td>${system.db_name || 'N/A'}</td>
-                <td>
-                    <span class="status-badge ${system.status ? 'online' : 'offline'}"
-                          title="${system.last_error || (system.status ? 'System is online' : 'System is offline')}">
-                        ${system.status ? 'Online' : 'Offline'}
-                    </span>
-                </td>
-                <td>
-                    <select class="form-control sequence-status" 
-                            onchange="updateSequenceStatus('${system._id}', this.value)"
-                            aria-label="Update sequence status">
-                        <option value="not_started" ${system.sequence_status === 'not_started' ? 'selected' : ''}>Not Started</option>
-                        <option value="in_progress" ${system.sequence_status === 'in_progress' ? 'selected' : ''}>In Progress</option>
-                        <option value="completed" ${system.sequence_status === 'completed' ? 'selected' : ''}>Completed</option>
-                    </select>
-                </td>
-                <td>
-                    <button class="btn btn-sm btn-success" onclick="checkSystem('${system._id}')" 
-                            title="Test system connectivity and services"
-                            aria-label="Trigger system test">
-                        <i class="fas fa-sync-alt"></i> Trigger Test
-                    </button>
-                    <button class="btn btn-sm btn-info" onclick="editSystem('${system._id}')"
-                            title="Edit system configuration"
-                            aria-label="Edit system">
-                        <i class="fas fa-edit"></i> Edit
-                    </button>
-                    <button class="btn btn-sm btn-danger" onclick="deleteSystem('${system._id}')"
-                            title="Delete this system"
-                            aria-label="Delete system">
-                        <i class="fas fa-trash"></i> Delete
-                    </button>
-                </td>
-            `;
-            return row;
-        }
-
-        // Add page navigation functions
-        function showSystems() {
-            document.getElementById('systemsPage').style.display = 'block';
-            document.getElementById('summaryPage').style.display = 'none';
-            document.querySelector('a[onclick="showSystems()"]').classList.add('active');
-            document.querySelector('a[onclick="showSummary()"]').classList.remove('active');
-        }
-
-        function showSummary() {
-            document.getElementById('systemsPage').style.display = 'none';
-            document.getElementById('summaryPage').style.display = 'block';
-            document.querySelector('a[onclick="showSystems()"]').classList.remove('active');
-            document.querySelector('a[onclick="showSummary()"]').classList.add('active');
-            updateSummary(); // Update summary when showing the page
-        }
-
-        // Call updateSummary periodically
-        setInterval(updateSummary, 30000); // Update summary every 30 seconds
+        // Initialize page
+        fetchSystems();
+        updateSummary();
         
-        // Initialize pages
-        document.addEventListener('DOMContentLoaded', () => {
-            showSystems(); // Start with systems page
-            updateSummary(); // Initial summary update
-        });
+        // Update summary every 30 seconds
+        setInterval(() => {
+            fetchSystems();
+            updateSummary();
+        }, 30000);
     </script>
 </body>
 </html>
