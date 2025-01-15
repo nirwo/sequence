@@ -187,78 +187,108 @@ def update_status():
 @app.route('/api/systems/import', methods=['POST'])
 def import_systems():
     if 'file' not in request.files:
-        return jsonify({"error": "No file provided"}), 400
-    
+        return jsonify({'error': 'No file provided'}), 400
+        
     file = request.files['file']
-    if file.filename == '' or not file.filename.endswith('.csv'):
-        return jsonify({"error": "Invalid file format. Please upload a CSV file"}), 400
-
+    if not file.filename.endswith('.csv'):
+        return jsonify({'error': 'File must be a CSV'}), 400
+        
     try:
         # Read CSV content
-        stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
-        csv_reader = csv.DictReader(stream)
+        content = file.read().decode('utf-8')
+        csv_reader = csv.DictReader(io.StringIO(content))
         
-        systems_added = 0
-        errors = []
-        
+        systems = []
         for row in csv_reader:
+            # Process cluster nodes if present
+            cluster_nodes = None
+            if row.get('cluster_nodes'):
+                nodes = [node.strip() for node in row['cluster_nodes'].split(';') if node.strip()]
+                if nodes:
+                    cluster_nodes = [{'host': node, 'status': False, 'last_check': None} for node in nodes]
+            
+            # Process shutdown sequence if present
+            shutdown_sequence = row.get('shutdown_sequence', '').strip() or 'N/A'
+            
+            # Convert db_port to integer if present
             try:
-                system = {
-                    'name': row.get('Server Name', '').strip(),
-                    'app_name': row.get('Application Name', '').strip(),
-                    'check_type': row.get('Check Type', 'http').strip().lower(),
-                    'target': row.get('Target URL/IP', '').strip(),
-                    'db_name': row.get('Database Name', '').strip() or None,
-                    'db_type': row.get('Database Type', '').strip() or None,
-                    'owner': row.get('Owner', '').strip() or None,
-                    'created_at': datetime.now(),
-                    'last_check': datetime.now(),
-                    'status': False
-                }
-
-                # Handle shutdown sequence as string
-                shutdown_sequence = row.get('Shutdown Sequence', '').strip()
-                system['shutdown_sequence'] = shutdown_sequence if shutdown_sequence else None
-
-                # Handle cluster nodes
-                cluster_nodes = row.get('Cluster Nodes', '').strip()
-                if cluster_nodes:
-                    system['cluster_nodes'] = [node.strip() for node in cluster_nodes.split(';') if node.strip()]
-                    if not system['cluster_nodes']:
-                        system['cluster_nodes'] = None
-                    elif not system['target']:
-                        system['target'] = system['cluster_nodes'][0]
-                else:
-                    system['cluster_nodes'] = None
-
-                # Validate required fields
-                if not system['name']:
-                    errors.append(f"Row {systems_added + 1}: Server Name is required")
-                    continue
-
-                # Validate target
-                if not system['target'] and not system.get('cluster_nodes'):
-                    errors.append(f"Row {systems_added + 1}: Target URL/IP is required for non-cluster systems")
-                    continue
-
-                mongo.db.systems.insert_one(system)
-                systems_added += 1
-
-            except Exception as e:
-                errors.append(f"Row {systems_added + 1}: {str(e)}")
-
-        response = {
-            "message": f"Successfully imported {systems_added} systems",
-            "systems_added": systems_added
-        }
+                db_port = int(row['db_port']) if row.get('db_port') else None
+            except ValueError:
+                db_port = None
+            
+            system = {
+                'name': row['name'],
+                'app_name': row.get('app_name', 'N/A'),
+                'target': row.get('target'),
+                'db_name': row.get('db_name', 'N/A'),
+                'db_type': row.get('db_type', 'N/A'),
+                'db_port': db_port,
+                'owner': row.get('owner', 'N/A'),
+                'shutdown_sequence': shutdown_sequence,
+                'check_type': row.get('check_type', 'ping'),
+                'cluster_nodes': cluster_nodes,
+                'created_at': datetime.now(),
+                'last_check': None,
+                'status': False,
+                'db_status': None,
+                'sequence_status': 'not_started',
+                'last_error': None
+            }
+            
+            systems.append(system)
         
-        if errors:
-            response["warnings"] = errors
-
-        return jsonify(response)
-
+        if not systems:
+            return jsonify({'error': 'No valid systems found in CSV'}), 400
+            
+        # Insert systems
+        result = mongo.db.systems.insert_many(systems)
+        return jsonify({
+            'message': f'Successfully imported {len(result.inserted_ids)} systems',
+            'imported_count': len(result.inserted_ids)
+        })
     except Exception as e:
-        return jsonify({"error": f"Error processing CSV file: {str(e)}"}), 400
+        return jsonify({'error': f'Error importing systems: {str(e)}'}), 500
+
+@app.route('/api/systems/export')
+def export_systems():
+    try:
+        systems = list(mongo.db.systems.find({}, {'_id': 0}))
+        
+        # Prepare CSV content
+        output = io.StringIO()
+        fieldnames = ['name', 'app_name', 'target', 'db_name', 'db_type', 'db_port', 
+                     'owner', 'shutdown_sequence', 'check_type', 'cluster_nodes']
+        
+        writer = csv.DictWriter(output, fieldnames=fieldnames)
+        writer.writeheader()
+        
+        for system in systems:
+            # Convert cluster nodes to string format
+            if system.get('cluster_nodes'):
+                system['cluster_nodes'] = ';'.join(node['host'] for node in system['cluster_nodes'])
+            else:
+                system['cluster_nodes'] = ''
+                
+            # Remove extra fields not needed in CSV
+            csv_system = {field: system.get(field, 'N/A') for field in fieldnames}
+            writer.writerow(csv_system)
+        
+        # Create response
+        output.seek(0)
+        return Response(
+            output.getvalue(),
+            mimetype='text/csv',
+            headers={'Content-Disposition': 'attachment; filename=systems_export.csv'}
+        )
+    except Exception as e:
+        return jsonify({'error': f'Error exporting systems: {str(e)}'}), 500
+
+@app.route('/static/example_systems.csv')
+def download_example():
+    return send_from_directory('static', 'example_systems.csv',
+                    mimetype='text/csv',
+                    as_attachment=True,
+                    download_name='example_systems.csv')
 
 @app.route('/api/csv/preview', methods=['POST'])
 def preview_csv():

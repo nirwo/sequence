@@ -1,4 +1,5 @@
-name,app_name,check_type,target,db_name,db_type,mount_points,owner,shutdown_sequence,cluster_nodes
-webserver01,Company Website,http,http://example.com,,,/var/www/html;/var/log/nginx,John Doe,service nginx stop;service php-fpm stop,
-dbserver01,PostgreSQL DB,ping,192.168.1.100,main_db,postgres,/var/lib/postgresql/data;/backup,Jane Smith,pg_ctl stop -D /var/lib/postgresql/data,
-app-cluster,Load Balancer,http,192.168.1.200,app_db,mysql,/var/lib/mysql;/var/log/mysql,Mike Johnson,service haproxy stop;service mysql stop,node1.example.com;node2.example.com
+name,app_name,target,db_name,db_type,db_port,owner,shutdown_sequence,check_type,cluster_nodes
+Example Server 1,MyApp,192.168.1.100,MyDB,PostgreSQL,5432,John Doe,Step1;Step2;Step3,both,node1.example.com;node2.example.com
+Example Server 2,WebApp,https://example.com,,,,Jane Smith,,http,
+Example Server 3,DBServer,10.0.0.100,MainDB,MySQL,3306,,,ping,
+Example Cluster,ClusterApp,cluster.example.com,ClusterDB,MongoDB,27017,Team A,Stop App;Stop DB;Shutdown,both,node1.cluster.com;node2.cluster.com;node3.cluster.com
