@@ -33,9 +33,9 @@
         
         .toast-container {
             position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 1060;
+            bottom: 1rem;
+            right: 1rem;
+            z-index: 1050;
         }
         
         .toast {
@@ -57,6 +57,34 @@
         .toast.info {
             border-left-color: #17a2b8;
         }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            text-align: center;
+            line-height: 20px;
+        }
+
+        .status-indicator i {
+            font-size: 10px;
+        }
+
+        .status-indicator.active i {
+            color: #28a745;
+        }
+
+        .status-indicator.inactive i {
+            color: #dc3545;
+        }
+
+        .wizard-step {
+            min-height: 300px;
+        }
+
+        .progress {
+            height: 5px;
+        }
     </style>
 </head>
 <body>
@@ -75,7 +103,7 @@
                         <li><a class="dropdown-item" href="#" onclick="document.getElementById('csvFile').click()">Quick Import CSV</a></li>
                         <li><a class="dropdown-item" href="#" onclick="openCSVMapping()">Map & Import CSV</a></li>
                         <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item" href="/example_import.csv" download>Download Example CSV</a></li>
+                        <li><a class="dropdown-item" href="/api/download/example-csv" download>Download Example CSV</a></li>
                     </ul>
                 </div>
                 <input type="file" id="csvFile" accept=".csv" style="display: none" onchange="importCSV(this)">
@@ -281,7 +309,7 @@
                     <div class="alert alert-info">
                         <h6 class="mb-2">CSV Import Instructions:</h6>
                         <ol class="mb-0">
-                            <li>Download the <a href="/static/example_systems.csv" download class="alert-link">example CSV file</a> to see the required format</li>
+                            <li>Download the <a href="/api/download/example-csv" class="alert-link">example CSV file</a> to see the required format</li>
                             <li>Create your CSV file following the same structure</li>
                             <li>Upload your file and map the columns</li>
                             <li>Required fields: System Name, Application Name, Target URL/IP</li>
@@ -292,6 +320,9 @@
                         <input type="file" class="form-control" id="csvMappingFile" accept=".csv" onchange="previewCSV(this)">
                         <div class="form-text">
                             File must be in CSV format with headers matching the example file.
+                            <button type="button" class="btn btn-link btn-sm p-0 ms-2" onclick="downloadExampleCSV()">
+                                <i class="fas fa-download"></i> Download Example
+                            </button>
                         </div>
                     </div>
                     
@@ -361,21 +392,40 @@
             }
 
             systems.forEach(system => {
-                const systemId = system._id.$oid || system._id; // Handle both BSON ObjectId and string formats
+                const systemId = system._id.$oid || system._id;
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td>
                         <span class="status-indicator ${system.status ? 'active' : 'inactive'}"
-                              title="${system.status ? 'Online' : 'Offline'}">
+                              title="${system.status ? 'Online' : 'Offline'}"
+                              data-bs-toggle="tooltip">
+                            <i class="fas fa-circle"></i>
                         </span>
                     </td>
                     <td>${system.name || ''}</td>
-                    <td>${system.app_name || ''}</td>
-                    <td>${system.check_type || ''}</td>
-                    <td>${system.target || ''}</td>
-                    <td>${system.db_name || ''}</td>
-                    <td>${system.owner || ''}</td>
-                    <td>${system.last_check ? new Date(system.last_check.$date || system.last_check).toLocaleString() : ''}</td>
+                    <td>${system.app_name || '<span class="text-muted">N/A</span>'}</td>
+                    <td>${system.check_type || 'ping'}</td>
+                    <td>
+                        ${system.target || ''}
+                        ${system.cluster_nodes && system.cluster_nodes.length > 0 ? 
+                            `<span class="badge bg-info ms-1" title="Cluster Nodes: ${system.cluster_nodes.join(', ')}" data-bs-toggle="tooltip">
+                                <i class="fas fa-server"></i> ${system.cluster_nodes.length}
+                            </span>` : 
+                            ''}
+                    </td>
+                    <td>
+                        ${system.db_name ? 
+                            `${system.db_name}${system.db_type ? ` (${system.db_type})` : ''}` : 
+                            '<span class="text-muted">N/A</span>'}
+                    </td>
+                    <td>${system.owner || '<span class="text-muted">N/A</span>'}</td>
+                    <td>
+                        ${system.last_check ? 
+                            `<span title="${new Date(system.last_check.$date || system.last_check).toLocaleString()}" data-bs-toggle="tooltip">
+                                ${formatTimeAgo(new Date(system.last_check.$date || system.last_check))}
+                            </span>` : 
+                            '<span class="text-muted">Never</span>'}
+                    </td>
                     <td>
                         <div class="btn-group">
                             <button class="btn btn-sm btn-outline-primary" onclick="editSystem('${systemId}')" title="Edit">
@@ -389,6 +439,27 @@
                 `;
                 tbody.appendChild(row);
             });
+
+            // Initialize tooltips
+            const tooltips = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            tooltips.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+        }
+
+        function formatTimeAgo(date) {
+            const now = new Date();
+            const diffMs = now - date;
+            const diffSec = Math.round(diffMs / 1000);
+            const diffMin = Math.round(diffSec / 60);
+            const diffHour = Math.round(diffMin / 60);
+            const diffDay = Math.round(diffHour / 24);
+
+            if (diffSec < 60) return `${diffSec}s ago`;
+            if (diffMin < 60) return `${diffMin}m ago`;
+            if (diffHour < 24) return `${diffHour}h ago`;
+            if (diffDay < 30) return `${diffDay}d ago`;
+            return date.toLocaleDateString();
         }
 
         // Edit system
@@ -818,6 +889,30 @@
             .catch(error => {
                 showToast('Error importing CSV file: ' + error.message, 'error');
             });
+        }
+
+        // CSV download function
+        function downloadExampleCSV() {
+            fetch('/api/download/example-csv')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.blob();
+                })
+                .then(blob => {
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'example_systems.csv';
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    a.remove();
+                })
+                .catch(error => {
+                    showToast('Error downloading example file: ' + error.message, 'error');
+                });
         }
 
         // Toast notification system

@@ -38,26 +38,42 @@ def get_systems():
 def add_system():
     try:
         system = request.json
+        
+        # Set default values
         system['created_at'] = datetime.now()
-        system['last_check'] = datetime.now()
+        system['last_check'] = None
         system['status'] = False
         
-        # Handle cluster nodes
-        if 'cluster_nodes' in system and isinstance(system['cluster_nodes'], str):
-            system['cluster_nodes'] = [node.strip() for node in system['cluster_nodes'].split(',') if node.strip()]
-            # Set target as the first node if it's empty
-            if not system.get('target') and system['cluster_nodes']:
-                system['target'] = system['cluster_nodes'][0]
-        
-        # Ensure target is set for single node systems
-        if not system.get('target') and not system.get('cluster_nodes'):
-            return jsonify({"error": "Target URL/IP is required"}), 400
+        # Handle empty or missing fields
+        if not system.get('name'):
+            return jsonify({"error": "Server Name is required"}), 400
             
-        result = mongo.db.systems.insert_one(system)
-        return jsonify({
-            "message": "System added successfully",
-            "id": str(result.inserted_id)
-        })
+        # Handle cluster nodes
+        if 'cluster_nodes' in system:
+            if isinstance(system['cluster_nodes'], str):
+                system['cluster_nodes'] = [node.strip() for node in system['cluster_nodes'].split(',') if node.strip()]
+            elif not isinstance(system['cluster_nodes'], list):
+                system['cluster_nodes'] = []
+        
+        # Handle target for cluster systems
+        if not system.get('target') and system.get('cluster_nodes'):
+            system['target'] = system['cluster_nodes'][0]
+        
+        # Validate target
+        if not system.get('target') and not system.get('cluster_nodes'):
+            return jsonify({"error": "Target URL/IP is required for non-cluster systems"}), 400
+            
+        # Set default check type if not provided
+        if not system.get('check_type'):
+            system['check_type'] = 'ping'
+            
+        # Clean empty strings to None
+        for key in system:
+            if isinstance(system[key], str) and not system[key].strip():
+                system[key] = None
+        
+        mongo.db.systems.insert_one(system)
+        return jsonify({"message": "System added successfully"})
     except Exception as e:
         print(f"Error adding system: {str(e)}")
         return jsonify({"error": str(e)}), 500
@@ -65,24 +81,39 @@ def add_system():
 @app.route('/api/systems/<system_id>', methods=['PUT'])
 def update_system(system_id):
     try:
-        # Validate ObjectId format
         if not ObjectId.is_valid(system_id):
             return jsonify({"error": "Invalid system ID format"}), 400
 
         system = request.json
         
-        # Handle cluster nodes
-        if 'cluster_nodes' in system and isinstance(system['cluster_nodes'], str):
-            system['cluster_nodes'] = [node.strip() for node in system['cluster_nodes'].split(',') if node.strip()]
-            # Set target as the first node if it's empty
-            if not system.get('target') and system['cluster_nodes']:
-                system['target'] = system['cluster_nodes'][0]
-        
-        # Ensure target is set for single node systems
-        if not system.get('target') and not system.get('cluster_nodes'):
-            return jsonify({"error": "Target URL/IP is required"}), 400
+        # Handle empty or missing fields
+        if not system.get('name'):
+            return jsonify({"error": "Server Name is required"}), 400
             
-        # Update the system
+        # Handle cluster nodes
+        if 'cluster_nodes' in system:
+            if isinstance(system['cluster_nodes'], str):
+                system['cluster_nodes'] = [node.strip() for node in system['cluster_nodes'].split(',') if node.strip()]
+            elif not isinstance(system['cluster_nodes'], list):
+                system['cluster_nodes'] = []
+        
+        # Handle target for cluster systems
+        if not system.get('target') and system.get('cluster_nodes'):
+            system['target'] = system['cluster_nodes'][0]
+        
+        # Validate target
+        if not system.get('target') and not system.get('cluster_nodes'):
+            return jsonify({"error": "Target URL/IP is required for non-cluster systems"}), 400
+            
+        # Set default check type if not provided
+        if not system.get('check_type'):
+            system['check_type'] = 'ping'
+            
+        # Clean empty strings to None
+        for key in system:
+            if isinstance(system[key], str) and not system[key].strip():
+                system[key] = None
+        
         result = mongo.db.systems.update_one(
             {'_id': ObjectId(system_id)},
             {'$set': system}
@@ -337,7 +368,7 @@ def download_csv_template():
         
         # Write headers
         headers = [
-            'System Name',
+            'Server Name',
             'Application Name',
             'Check Type',
             'Target URL/IP',
@@ -377,6 +408,99 @@ def download_csv_template():
         )
     except Exception as e:
         return jsonify({"error": f"Error generating template: {str(e)}"}), 500
+
+@app.route('/api/download/example-csv')
+def download_example_csv():
+    try:
+        # Create CSV content
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # Write headers
+        headers = [
+            'Server Name',
+            'Application Name',
+            'Check Type',
+            'Target URL/IP',
+            'Database Name',
+            'Database Type',
+            'Mount Points',
+            'Owner',
+            'Shutdown Sequence',
+            'Cluster Nodes'
+        ]
+        writer.writerow(headers)
+        
+        # Write example rows
+        example_rows = [
+            # Standalone server with application
+            [
+                'webserver01',
+                'Company Website',
+                'http',
+                'http://webserver01:8080',
+                '',
+                '',
+                '/mnt/logs',
+                'John Doe',
+                'service nginx stop,service app stop',
+                ''
+            ],
+            # Standalone database server
+            [
+                'dbserver01',
+                '',
+                'ping',
+                '192.168.1.100',
+                'main_db',
+                'postgres',
+                '/mnt/data,/mnt/backup',
+                'Jane Smith',
+                'service postgresql stop',
+                ''
+            ],
+            # Multi-node application cluster
+            [
+                'app-cluster',
+                'Load Balancer',
+                'http',
+                'http://app-lb:8080',
+                'app_db',
+                'mysql',
+                '/mnt/app/data',
+                'Mike Johnson',
+                'service haproxy stop,service app stop',
+                'app01.example.com,app02.example.com,app03.example.com'
+            ],
+            # Standalone application server
+            [
+                'appserver01',
+                'Internal Tool',
+                'http',
+                'http://appserver01:3000',
+                '',
+                '',
+                '',
+                'Alice Brown',
+                '',
+                ''
+            ]
+        ]
+        for row in example_rows:
+            writer.writerow(row)
+        
+        # Create the response
+        output.seek(0)
+        return Response(
+            output.getvalue(),
+            mimetype='text/csv',
+            headers={
+                'Content-Disposition': 'attachment; filename=example_systems.csv',
+                'Content-Type': 'text/csv'
+            }
+        )
+    except Exception as e:
+        return jsonify({"error": f"Error generating example CSV: {str(e)}"}), 500
 
 if __name__ == '__main__':
     status_thread = threading.Thread(target=update_status)
