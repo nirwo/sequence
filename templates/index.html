@@ -355,21 +355,28 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         let systems = [];
+        let currentStep = 1;
+        const totalSteps = 4;
 
-        async function fetchSystems() {
-            try {
-                const response = await fetch('/api/systems');
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                const data = await response.json();
-                systems = data.systems || [];
-                updateSystemsTable();
-            } catch (error) {
-                showToast('Error fetching systems: ' + error.message, 'error');
-            }
+        // Fetch systems from the server
+        function fetchSystems() {
+            fetch('/api/systems')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    systems = data.systems || [];
+                    updateSystemsTable();
+                })
+                .catch(error => {
+                    showToast('Error fetching systems: ' + error.message, 'error');
+                });
         }
 
+        // Update the systems table display
         function updateSystemsTable() {
             const tbody = document.querySelector('#systemsTable tbody');
             tbody.innerHTML = '';
@@ -413,6 +420,7 @@
             });
         }
 
+        // Edit system
         function editSystem(systemId) {
             const system = systems.find(s => s._id === systemId);
             if (!system) {
@@ -448,41 +456,93 @@
             new bootstrap.Modal(document.getElementById('editModal')).show();
         }
 
-        async function deleteSystem(systemId) {
+        // Save edited system
+        function saveEditedSystem(event) {
+            event.preventDefault();
+            const form = document.getElementById('editSystemForm');
+            const systemId = form.dataset.systemId;
+            
+            if (!systemId) {
+                showToast('System ID not found', 'error');
+                return;
+            }
+
+            const formData = {
+                name: form.querySelector('[name="name"]').value.trim(),
+                app_name: form.querySelector('[name="app_name"]').value.trim(),
+                check_type: form.querySelector('[name="check_type"]').value,
+                target: form.querySelector('[name="target"]').value.trim(),
+                db_name: form.querySelector('[name="db_name"]').value.trim(),
+                db_type: form.querySelector('[name="db_type"]').value.trim(),
+                mount_points: form.querySelector('[name="mount_points"]').value.trim(),
+                owner: form.querySelector('[name="owner"]').value.trim(),
+                shutdown_sequence: form.querySelector('[name="shutdown_sequence"]').value.trim(),
+                cluster_nodes: form.querySelector('[name="cluster_nodes"]').value.trim()
+            };
+
+            if (!formData.name || !formData.app_name) {
+                showToast('System Name and Application Name are required', 'error');
+                return;
+            }
+
+            fetch(`/api/systems/${systemId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(formData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    showToast(data.error, 'error');
+                } else {
+                    showToast('System updated successfully', 'success');
+                    bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
+                    fetchSystems();
+                }
+            })
+            .catch(error => {
+                showToast('Error updating system: ' + error.message, 'error');
+            });
+        }
+
+        // Delete system
+        function deleteSystem(systemId) {
             if (!confirm('Are you sure you want to delete this system?')) {
                 return;
             }
 
-            try {
-                const response = await fetch(`/api/systems/${systemId}`, {
-                    method: 'DELETE'
-                });
-                
-                const data = await response.json();
+            fetch(`/api/systems/${systemId}`, {
+                method: 'DELETE'
+            })
+            .then(response => response.json())
+            .then(data => {
                 if (data.error) {
                     showToast(data.error, 'error');
                 } else {
                     showToast('System deleted successfully', 'success');
-                    await fetchSystems();
+                    fetchSystems();
                 }
-            } catch (error) {
+            })
+            .catch(error => {
                 showToast('Error deleting system: ' + error.message, 'error');
-            }
+            });
         }
 
-        async function importCSV(input) {
+        // Import CSV
+        function importCSV(input) {
             if (!input.files.length) return;
             
             const formData = new FormData();
             formData.append('file', input.files[0]);
             
-            try {
-                const response = await fetch('/api/systems/import', {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                const data = await response.json();
+            fetch('/api/systems/import', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
                 if (data.error) {
                     showToast(data.error, 'error');
                 } else {
@@ -492,29 +552,67 @@
                             showToast(warning, 'info', 8000);
                         });
                     }
-                    await fetchSystems();
+                    fetchSystems();
                 }
-            } catch (error) {
+            })
+            .catch(error => {
                 showToast('Error importing CSV file: ' + error.message, 'error');
-            } finally {
+            })
+            .finally(() => {
                 input.value = '';
+            });
+        }
+
+        // Wizard navigation functions
+        function nextStep() {
+            if (currentStep < totalSteps) {
+                currentStep++;
+                showStep(currentStep);
+                updateProgressBar();
+            } else {
+                submitWizardForm();
             }
         }
 
-        // Add event listeners when the document is ready
-        document.addEventListener('DOMContentLoaded', () => {
-            // Edit form submit handler
-            document.getElementById('editSystemForm').addEventListener('submit', async (event) => {
-                event.preventDefault();
-                await saveEditedSystem(event);
+        function previousStep() {
+            if (currentStep > 1) {
+                currentStep--;
+                showStep(currentStep);
+                updateProgressBar();
+            }
+        }
+
+        function showStep(step) {
+            document.querySelectorAll('.wizard-step').forEach(s => {
+                if (parseInt(s.dataset.step) === step) {
+                    s.classList.remove('d-none');
+                } else {
+                    s.classList.add('d-none');
+                }
             });
 
-            // Initial load
-            fetchSystems();
+            const footer = document.querySelector('.modal-footer');
+            const prevBtn = footer.querySelector('button:first-child');
+            const nextBtn = footer.querySelector('button:last-child');
 
-            // Setup refresh interval
-            setInterval(fetchSystems, 60000); // Refresh every minute
-        });
+            prevBtn.style.display = step === 1 ? 'none' : 'block';
+            nextBtn.textContent = step === totalSteps ? 'Submit' : 'Next';
+        }
+
+        function updateProgressBar() {
+            const progress = ((currentStep - 1) / (totalSteps - 1)) * 100;
+            document.querySelector('.progress-bar').style.width = `${progress}%`;
+            
+            document.querySelectorAll('.step-indicator').forEach((indicator, index) => {
+                if (index + 1 < currentStep) {
+                    indicator.classList.add('completed');
+                } else if (index + 1 === currentStep) {
+                    indicator.classList.add('active');
+                } else {
+                    indicator.classList.remove('active', 'completed');
+                }
+            });
+        }
 
         // Toast notification system
         function showToast(message, type = 'info', duration = 5000) {
@@ -536,6 +634,18 @@
                 toast.remove();
             }, duration);
         }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            // Add form submit handler
+            document.getElementById('editSystemForm').addEventListener('submit', saveEditedSystem);
+            
+            // Initial load
+            fetchSystems();
+            
+            // Setup refresh interval
+            setInterval(fetchSystems, 60000); // Refresh every minute
+        });
     </script>
 </body>
 </html>
