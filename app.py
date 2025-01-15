@@ -1,19 +1,31 @@
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, request, jsonify
 from flask_pymongo import PyMongo
 from datetime import datetime
-import requests
-from ping3 import ping
 import threading
 import time
+import requests
+from ping3 import ping
 import os
-from apscheduler.schedulers.background import BackgroundScheduler
 import csv
 import io
 import json
+from bson import ObjectId, json_util
+from apscheduler.schedulers.background import BackgroundScheduler
 
 app = Flask(__name__)
 app.config["MONGO_URI"] = os.getenv("MONGO_URI", "mongodb://localhost:27017/app_monitor")
 mongo = PyMongo(app)
+
+# Custom JSON encoder to handle ObjectId
+class CustomJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, ObjectId):
+            return str(obj)
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return super().default(obj)
+
+app.json_encoder = CustomJSONEncoder
 
 def check_status(target, check_type):
     try:
@@ -51,9 +63,6 @@ def index():
 @app.route('/api/systems', methods=['GET'])
 def get_systems():
     systems = list(mongo.db.systems.find())
-    for system in systems:
-        system['_id'] = str(system['_id'])
-        system['last_check'] = system['last_check'].isoformat() if 'last_check' in system else None
     return jsonify(systems)
 
 @app.route('/api/systems', methods=['POST'])
@@ -117,7 +126,6 @@ def update_system(system_id):
 
 @app.route('/api/systems/<system_id>', methods=['DELETE'])
 def delete_system(system_id):
-    from bson.objectid import ObjectId
     mongo.db.systems.delete_one({'_id': ObjectId(system_id)})
     return jsonify({"message": "System deleted successfully"})
 

@@ -378,22 +378,36 @@
 
         function editSystem(systemId) {
             const system = systems.find(s => s._id === systemId);
-            if (!system) return;
+            if (!system) {
+                console.error('System not found:', systemId);
+                return;
+            }
 
             const form = document.getElementById('editSystemForm');
             form.dataset.systemId = systemId;
             
-            form.querySelector('[name="name"]').value = system.name || '';
-            form.querySelector('[name="app_name"]').value = system.app_name || '';
-            form.querySelector('[name="check_type"]').value = system.check_type || 'http';
-            form.querySelector('[name="target"]').value = system.target || '';
-            form.querySelector('[name="db_name"]').value = system.db_name || '';
-            form.querySelector('[name="db_type"]').value = system.db_type || '';
-            form.querySelector('[name="mount_points"]').value = system.mount_points || '';
-            form.querySelector('[name="owner"]').value = system.owner || '';
-            form.querySelector('[name="shutdown_sequence"]').value = system.shutdown_sequence || '';
-            form.querySelector('[name="cluster_nodes"]').value = system.cluster_nodes ? system.cluster_nodes.join(',') : '';
+            // Set form values with null checks
+            const fields = {
+                'name': system.name,
+                'app_name': system.app_name,
+                'check_type': system.check_type,
+                'target': system.target,
+                'db_name': system.db_name,
+                'db_type': system.db_type,
+                'mount_points': system.mount_points,
+                'owner': system.owner,
+                'shutdown_sequence': system.shutdown_sequence,
+                'cluster_nodes': system.cluster_nodes ? system.cluster_nodes.join(',') : ''
+            };
 
+            for (const [field, value] of Object.entries(fields)) {
+                const element = form.querySelector(`[name="${field}"]`);
+                if (element) {
+                    element.value = value || '';
+                }
+            }
+
+            // Show the modal
             new bootstrap.Modal(document.getElementById('editModal')).show();
         }
 
@@ -402,6 +416,11 @@
             const form = document.getElementById('editSystemForm');
             const systemId = form.dataset.systemId;
             
+            if (!systemId) {
+                console.error('No system ID found');
+                return;
+            }
+
             const formData = {
                 name: form.querySelector('[name="name"]').value.trim(),
                 app_name: form.querySelector('[name="app_name"]').value.trim(),
@@ -437,6 +456,7 @@
                     await fetchSystems();
                 }
             } catch (error) {
+                console.error('Error updating system:', error);
                 alert('Error updating system');
             }
         }
