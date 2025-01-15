@@ -10,6 +10,9 @@ import csv
 import io
 import json
 from bson import ObjectId, json_util
+import subprocess
+import platform
+from requests.exceptions import RequestException
 
 app = Flask(__name__, static_url_path='/static', static_folder='static')
 app.config["MONGO_URI"] = os.getenv("MONGO_URI", "mongodb://localhost:27017/app_monitor")
@@ -505,6 +508,103 @@ def download_example_csv():
         )
     except Exception as e:
         return jsonify({"error": f"Error generating example CSV: {str(e)}"}), 500
+
+def test_http(url):
+    try:
+        # Add http:// if no protocol specified
+        if not url.startswith(('http://', 'https://')):
+            url = f'http://{url}'
+        
+        response = requests.get(url, timeout=10)
+        return response.status_code == 200
+    except RequestException:
+        return False
+
+def test_ping(host):
+    try:
+        # Remove protocol if present
+        host = host.replace('http://', '').replace('https://', '')
+        # Remove path and query parameters
+        host = host.split('/')[0]
+        
+        # Ping command parameters
+        param = '-n' if platform.system().lower() == 'windows' else '-c'
+        command = ['ping', param, '1', host]
+        
+        return subprocess.call(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0
+    except:
+        return False
+
+@app.route('/api/systems/check/<system_id>')
+def check_system(system_id):
+    try:
+        system = mongo.db.systems.find_one({'_id': ObjectId(system_id)})
+        if not system:
+            return jsonify({'error': 'System not found'}), 404
+
+        status = False
+        target = system.get('target')
+        
+        if target:
+            if system.get('check_type') == 'http':
+                status = test_http(target)
+            else:  # default to ping
+                status = test_ping(target)
+
+        # Update system status and last check time
+        mongo.db.systems.update_one(
+            {'_id': ObjectId(system_id)},
+            {
+                '$set': {
+                    'status': status,
+                    'last_check': datetime.now()
+                }
+            }
+        )
+
+        return jsonify({
+            'status': status,
+            'last_check': datetime.now().isoformat()
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/systems/check_all')
+def check_all_systems():
+    try:
+        systems = list(mongo.db.systems.find())
+        results = []
+        
+        for system in systems:
+            status = False
+            target = system.get('target')
+            
+            if target:
+                if system.get('check_type') == 'http':
+                    status = test_http(target)
+                else:  # default to ping
+                    status = test_ping(target)
+            
+            # Update system status and last check time
+            mongo.db.systems.update_one(
+                {'_id': system['_id']},
+                {
+                    '$set': {
+                        'status': status,
+                        'last_check': datetime.now()
+                    }
+                }
+            )
+            
+            results.append({
+                'id': str(system['_id']),
+                'name': system.get('name'),
+                'status': status
+            })
+        
+        return jsonify(results)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     status_thread = threading.Thread(target=update_status)
