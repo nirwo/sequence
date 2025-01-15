@@ -35,10 +35,20 @@ def index():
 def get_systems():
     try:
         # Test MongoDB connection first
-        mongo.db.command('ping')
+        try:
+            mongo.db.command('ping')
+        except Exception as e:
+            print(f"MongoDB connection error: {str(e)}")
+            return jsonify({'error': 'Database connection error', 'systems': []}), 500
         
         # Get all systems with proper error handling
-        systems = list(mongo.db.systems.find())
+        try:
+            systems = list(mongo.db.systems.find())
+            print(f"Found {len(systems)} systems in database")
+        except Exception as e:
+            print(f"Error querying systems: {str(e)}")
+            return jsonify({'error': 'Error querying systems', 'systems': []}), 500
+            
         if not systems:
             print("No systems found in database")
             return jsonify({'systems': []})
@@ -51,11 +61,14 @@ def get_systems():
             system['last_check'] = system.get('last_check', datetime.now())
             system['sequence_status'] = system.get('sequence_status', 'not_started')
             system['last_error'] = system.get('last_error', '')
+            # Handle target field
+            if 'target' not in system:
+                system['target'] = system.get('name', 'unknown')
         
-        print(f"Successfully retrieved {len(systems)} systems")
+        print(f"Successfully processed {len(systems)} systems")
         return jsonify({'systems': systems})
     except Exception as e:
-        print(f"Error retrieving systems: {str(e)}")
+        print(f"Unexpected error in get_systems: {str(e)}")
         return jsonify({'error': str(e), 'systems': []}), 500
 
 @app.route('/api/systems', methods=['POST'])
@@ -854,52 +867,25 @@ def test_http(url):
         return {'success': False, 'message': str(e)}
 
 def test_ping(host):
+    """Test if a host is reachable via ping."""
     try:
-        # Remove protocol if present
-        host = host.replace('http://', '').replace('https://', '')
-        # Remove path and query parameters
-        host = host.split('/')[0]
-        # Remove port if present
-        host = host.split(':')[0]
-        
-        print(f"Attempting to ping host: {host}")
-        
-        # Ping command parameters
-        param = '-n' if platform.system().lower() == 'windows' else '-c'
-        command = ['ping', param, '1', host]  # Using just 'ping' as it's in PATH
-        
-        # Use subprocess.Popen to get output
-        process = subprocess.Popen(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            universal_newlines=True
-        )
-        stdout, stderr = process.communicate()
-        
-        success = process.returncode == 0
-        print(f"Ping output for {host}:")
-        print(stdout)
-        if stderr:
-            print(f"Ping error for {host}:")
-            print(stderr)
-            
-        if not success:
-            # Check if we can get more specific error from output
-            if "unknown host" in (stdout + stderr).lower():
-                return {'success': False, 'message': f"Unknown host: {host}"}
-            elif "network is unreachable" in (stdout + stderr).lower():
-                return {'success': False, 'message': f"Network is unreachable for host: {host}"}
-            elif "permission denied" in (stdout + stderr).lower():
-                return {'success': False, 'message': f"Permission denied when pinging {host}. Try running with sudo."}
-            else:
-                return {'success': False, 'message': f"Host {host} is not responding. {stderr if stderr else stdout}"}
-            
-        return {'success': success, 'message': stdout if success else f"Host {host} is not responding. {stderr if stderr else ''}"}
+        # First try to resolve the hostname
+        try:
+            socket.gethostbyname(host)
+        except socket.gaierror:
+            return False, "Name or service not known (DNS resolution failed)"
+
+        # If hostname resolves, try to ping
+        try:
+            response_time = ping(host, timeout=2)
+            if response_time is None or response_time is False:
+                return False, "Host not responding to ping"
+            return True, f"Response time: {response_time:.2f}ms"
+        except Exception as e:
+            return False, f"Ping failed: {str(e)}"
+
     except Exception as e:
-        error_msg = f"Error pinging {host}: {str(e)}"
-        print(error_msg)
-        return {'success': False, 'message': error_msg}
+        return False, f"Error during ping test: {str(e)}"
 
 def test_db_connection(host, port):
     try:
