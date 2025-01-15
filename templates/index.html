@@ -64,7 +64,7 @@
         <div class="container-fluid">
             <a class="navbar-brand" href="#">Application Monitor</a>
             <div class="d-flex">
-                <button class="btn btn-primary me-2" data-bs-toggle="modal" data-bs-target="#wizardModal">
+                <button class="btn btn-primary me-2" data-bs-toggle="modal" data-bs-target="#addSystemWizardModal">
                     <i class="fas fa-plus me-2"></i>Add System
                 </button>
                 <div class="dropdown">
@@ -175,141 +175,96 @@
         </div>
     </div>
 
-    <!-- Wizard Modal -->
-    <div class="modal fade" id="wizardModal" tabindex="-1">
+    <!-- Add System Wizard Modal -->
+    <div class="modal fade" id="addSystemWizardModal" tabindex="-1">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">Add New System</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
-                <div class="modal-body">
-                    <div class="wizard">
-                        <div class="wizard-steps mb-4">
-                            <div class="progress">
-                                <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+                <form id="addSystemWizardForm" novalidate>
+                    <div class="modal-body">
+                        <!-- Progress Bar -->
+                        <div class="progress mb-3">
+                            <div class="progress-bar" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
+
+                        <!-- Step 1: Basic Information -->
+                        <div class="wizard-step" data-step="1">
+                            <h6 class="mb-3">Basic Information</h6>
+                            <div class="mb-3">
+                                <label class="form-label">System Name <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" name="name" required>
+                                <div class="invalid-feedback">System name is required</div>
                             </div>
-                            <div class="d-flex justify-content-between mt-2">
-                                <span class="step-indicator active">1. Application</span>
-                                <span class="step-indicator">2. Server(s)</span>
-                                <span class="step-indicator">3. Database</span>
-                                <span class="step-indicator">4. Details</span>
+                            <div class="mb-3">
+                                <label class="form-label">Application Name <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" name="app_name" required>
+                                <div class="invalid-feedback">Application name is required</div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Owner</label>
+                                <input type="text" class="form-control" name="owner">
                             </div>
                         </div>
-                        
-                        <form id="wizardForm">
-                            <!-- Step 1: Application -->
-                            <div class="wizard-step" data-step="1">
-                                <h6>Application Information</h6>
-                                <div class="mb-3">
-                                    <label class="form-label">Application Name</label>
-                                    <input type="text" class="form-control" name="app_name" required>
-                                </div>
-                                <div class="mb-3">
-                                    <label class="form-label">Application Owner</label>
-                                    <input type="text" class="form-control" name="owner" required>
-                                </div>
-                            </div>
 
-                            <!-- Step 2: Servers -->
-                            <div class="wizard-step d-none" data-step="2">
-                                <h6>Server Information</h6>
-                                <div class="mb-3">
-                                    <label class="form-label">Is this a cluster?</label>
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="radio" name="is_cluster" value="no" checked onchange="toggleClusterView()">
-                                        <label class="form-check-label">Single Server</label>
-                                    </div>
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="radio" name="is_cluster" value="yes" onchange="toggleClusterView()">
-                                        <label class="form-check-label">Cluster</label>
-                                    </div>
-                                </div>
-                                <div id="singleServerForm">
-                                    <div class="mb-3">
-                                        <label class="form-label">Server Name</label>
-                                        <input type="text" class="form-control" name="name" required>
-                                    </div>
-                                    <div class="mb-3">
-                                        <label class="form-label">Check Type</label>
-                                        <select class="form-select" name="check_type" required>
-                                            <option value="ping">Ping</option>
-                                            <option value="http">HTTP</option>
-                                        </select>
-                                    </div>
-                                    <div class="mb-3">
-                                        <label class="form-label">Target (IP/URL)</label>
-                                        <input type="text" class="form-control" name="target" required>
-                                    </div>
-                                </div>
-                                <div id="clusterForm" class="d-none">
-                                    <div id="clusterNodes">
-                                        <div class="cluster-node mb-3">
-                                            <div class="card">
-                                                <div class="card-body">
-                                                    <div class="mb-3">
-                                                        <label class="form-label">Node Name</label>
-                                                        <input type="text" class="form-control" name="cluster_nodes[]" required>
-                                                    </div>
-                                                    <div class="mb-3">
-                                                        <label class="form-label">Target (IP/URL)</label>
-                                                        <input type="text" class="form-control" name="cluster_targets[]" required>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <button type="button" class="btn btn-secondary" onclick="addClusterNode()">
-                                        <i class="fas fa-plus me-2"></i>Add Node
-                                    </button>
-                                </div>
+                        <!-- Step 2: Connection Details -->
+                        <div class="wizard-step d-none" data-step="2">
+                            <h6 class="mb-3">Connection Details</h6>
+                            <div class="mb-3">
+                                <label class="form-label">Check Type</label>
+                                <select class="form-select" name="check_type">
+                                    <option value="http">HTTP</option>
+                                    <option value="ping">Ping</option>
+                                </select>
                             </div>
+                            <div class="mb-3">
+                                <label class="form-label">Target URL/IP <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" name="target" required>
+                                <div class="invalid-feedback">Target URL/IP is required</div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Cluster Nodes (comma-separated)</label>
+                                <input type="text" class="form-control" name="cluster_nodes">
+                                <div class="form-text">Leave empty for single-node systems</div>
+                            </div>
+                        </div>
 
-                            <!-- Step 3: Database -->
-                            <div class="wizard-step d-none" data-step="3">
-                                <h6>Database Information</h6>
-                                <div class="mb-3">
-                                    <label class="form-label">Does this application have a database?</label>
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="radio" name="has_db" value="no" checked onchange="toggleDBView()">
-                                        <label class="form-check-label">No</label>
-                                    </div>
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="radio" name="has_db" value="yes" onchange="toggleDBView()">
-                                        <label class="form-check-label">Yes</label>
-                                    </div>
-                                </div>
-                                <div id="dbForm" class="d-none">
-                                    <div class="mb-3">
-                                        <label class="form-label">Database Name</label>
-                                        <input type="text" class="form-control" name="db_name">
-                                    </div>
-                                    <div class="mb-3">
-                                        <label class="form-label">Database Type</label>
-                                        <input type="text" class="form-control" name="db_type">
-                                    </div>
-                                </div>
+                        <!-- Step 3: Additional Details -->
+                        <div class="wizard-step d-none" data-step="3">
+                            <h6 class="mb-3">Additional Details</h6>
+                            <div class="mb-3">
+                                <label class="form-label">Database Name</label>
+                                <input type="text" class="form-control" name="db_name">
                             </div>
-
-                            <!-- Step 4: Additional Details -->
-                            <div class="wizard-step d-none" data-step="4">
-                                <h6>Additional Details</h6>
-                                <div class="mb-3">
-                                    <label class="form-label">Mount Points (NFS/CIFS)</label>
-                                    <input type="text" class="form-control" name="mount_points">
-                                </div>
-                                <div class="mb-3">
-                                    <label class="form-label">Shutdown Sequence</label>
-                                    <textarea class="form-control" name="shutdown_sequence" rows="3"></textarea>
-                                </div>
+                            <div class="mb-3">
+                                <label class="form-label">Database Type</label>
+                                <select class="form-select" name="db_type">
+                                    <option value="">None</option>
+                                    <option value="mysql">MySQL</option>
+                                    <option value="postgres">PostgreSQL</option>
+                                    <option value="mongodb">MongoDB</option>
+                                    <option value="oracle">Oracle</option>
+                                </select>
                             </div>
-                        </form>
+                            <div class="mb-3">
+                                <label class="form-label">Mount Points (comma-separated)</label>
+                                <input type="text" class="form-control" name="mount_points">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Shutdown Sequence (comma-separated)</label>
+                                <input type="text" class="form-control" name="shutdown_sequence">
+                            </div>
+                        </div>
                     </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" onclick="previousStep()">Previous</button>
-                    <button type="button" class="btn btn-primary" onclick="nextStep()">Next</button>
-                </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-secondary" onclick="previousStep(currentStep)">Previous</button>
+                        <button type="button" class="btn btn-primary" onclick="nextStep(currentStep)">Next</button>
+                        <button type="button" class="btn btn-success d-none" onclick="submitWizard()">Submit</button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
@@ -319,17 +274,21 @@
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">Map CSV Fields</h5>
+                    <h5 class="modal-title">Import Systems from CSV</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <div class="mb-3">
-                        <label class="form-label">Select CSV File</label>
+                        <label class="form-label">CSV File</label>
                         <input type="file" class="form-control" id="csvMappingFile" accept=".csv" onchange="previewCSV(this)">
+                        <div class="form-text">
+                            Upload a CSV file with system information. 
+                            <a href="/api/csv/template" class="text-primary" download>Download CSV Template</a>
+                        </div>
                     </div>
                     
                     <div id="csvPreview" class="d-none">
-                        <h6>Preview</h6>
+                        <h6 class="mb-3">CSV Preview</h6>
                         <div class="table-responsive mb-3">
                             <table class="table table-sm">
                                 <thead id="csvPreviewHeader"></thead>
@@ -337,12 +296,15 @@
                             </table>
                         </div>
                         
-                        <h6>Field Mapping</h6>
-                        <div id="fieldMapping" class="row g-3"></div>
+                        <h6 class="mb-3">Field Mapping</h6>
+                        <p class="text-muted small">Map CSV columns to system fields. Required fields are marked with *</p>
+                        <div class="row" id="fieldMapping">
+                            <!-- Field mapping will be populated here -->
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-primary" onclick="importMappedCSV()">Import</button>
                 </div>
             </div>
@@ -356,7 +318,7 @@
     <script>
         let systems = [];
         let currentStep = 1;
-        const totalSteps = 4;
+        const totalSteps = 3;
 
         // Fetch systems from the server
         function fetchSystems() {
@@ -566,42 +528,67 @@
 
         // Wizard navigation functions
         function nextStep() {
-            if (currentStep < totalSteps) {
-                currentStep++;
-                showStep(currentStep);
-                updateProgressBar();
-            } else {
-                submitWizardForm();
-            }
-        }
-
-        function previousStep() {
-            if (currentStep > 1) {
-                currentStep--;
-                showStep(currentStep);
-                updateProgressBar();
-            }
-        }
-
-        function showStep(step) {
-            document.querySelectorAll('.wizard-step').forEach(s => {
-                if (parseInt(s.dataset.step) === step) {
-                    s.classList.remove('d-none');
+            const form = document.getElementById('addSystemWizardForm');
+            const currentStepElement = document.querySelector(`.wizard-step[data-step="${currentStep}"]`);
+            
+            // Validate current step fields
+            let isValid = true;
+            currentStepElement.querySelectorAll('input[required], select[required]').forEach(input => {
+                if (!input.value) {
+                    input.classList.add('is-invalid');
+                    isValid = false;
                 } else {
-                    s.classList.add('d-none');
+                    input.classList.remove('is-invalid');
                 }
             });
 
-            const footer = document.querySelector('.modal-footer');
-            const prevBtn = footer.querySelector('button:first-child');
-            const nextBtn = footer.querySelector('button:last-child');
+            if (!isValid) {
+                showToast('Please fill in all required fields', 'error');
+                return;
+            }
 
-            prevBtn.style.display = step === 1 ? 'none' : 'block';
-            nextBtn.textContent = step === totalSteps ? 'Submit' : 'Next';
+            const nextStep = currentStep + 1;
+            showStep(nextStep);
         }
 
-        function updateProgressBar() {
-            const progress = ((currentStep - 1) / (totalSteps - 1)) * 100;
+        function previousStep() {
+            showStep(currentStep - 1);
+        }
+
+        function showStep(step) {
+            // Hide all steps
+            document.querySelectorAll('.wizard-step').forEach(s => s.classList.add('d-none'));
+            // Show current step
+            document.querySelector(`.wizard-step[data-step="${step}"]`).classList.remove('d-none');
+            
+            // Update buttons visibility
+            const prevBtn = document.querySelector('#addSystemWizardModal .btn-secondary:not([data-bs-dismiss])');
+            const nextBtn = document.querySelector('#addSystemWizardModal .btn-primary');
+            const submitBtn = document.querySelector('#addSystemWizardModal .btn-success');
+            
+            // Show/hide previous button
+            if (prevBtn) {
+                prevBtn.style.display = step === 1 ? 'none' : '';
+            }
+            
+            // Show/hide next and submit buttons
+            if (nextBtn && submitBtn) {
+                if (step === totalSteps) {
+                    nextBtn.classList.add('d-none');
+                    submitBtn.classList.remove('d-none');
+                } else {
+                    nextBtn.classList.remove('d-none');
+                    submitBtn.classList.add('d-none');
+                }
+            }
+            
+            // Update progress bar
+            updateProgressBar(step);
+        }
+
+        function updateProgressBar(currentStep) {
+            const totalSteps = document.querySelectorAll('.wizard-step').length;
+            const progress = (currentStep / totalSteps) * 100;
             document.querySelector('.progress-bar').style.width = `${progress}%`;
             
             document.querySelectorAll('.step-indicator').forEach((indicator, index) => {
@@ -614,6 +601,68 @@
                 }
             });
         }
+
+        function submitWizard() {
+            const wizardForm = document.getElementById('addSystemWizardForm');
+            if (!wizardForm) {
+                showToast('Form not found', 'error');
+                return;
+            }
+
+            // Validate form
+            if (!wizardForm.checkValidity()) {
+                wizardForm.reportValidity();
+                return;
+            }
+
+            // Get form data
+            const formData = new FormData(wizardForm);
+            const system = Object.fromEntries(formData.entries());
+
+            // Handle cluster nodes
+            if (system.cluster_nodes) {
+                system.cluster_nodes = system.cluster_nodes.split(',').map(node => node.trim()).filter(node => node);
+                // Set target as first node if empty
+                if (!system.target && system.cluster_nodes.length > 0) {
+                    system.target = system.cluster_nodes[0];
+                }
+            }
+
+            // Add system
+            fetch('/api/systems', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(system)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    showToast(data.error, 'error');
+                } else {
+                    showToast('System added successfully', 'success');
+                    // Reset form and close modal
+                    wizardForm.reset();
+                    bootstrap.Modal.getInstance(document.getElementById('addSystemWizardModal')).hide();
+                    // Refresh systems table
+                    fetchSystems();
+                }
+            })
+            .catch(error => {
+                showToast('Error adding system: ' + error.message, 'error');
+            });
+        }
+
+        // Reset wizard when modal is closed
+        document.getElementById('addSystemWizardModal').addEventListener('hidden.bs.modal', function () {
+            currentStep = 1;
+            showStep(1);
+            const form = document.getElementById('addSystemWizardForm');
+            if (form) {
+                form.reset();
+            }
+        });
 
         // CSV Import and Mapping Functions
         function openCSVMapping() {
@@ -658,26 +707,32 @@
                 // Set up field mapping
                 const mappingDiv = document.getElementById('fieldMapping');
                 const availableFields = [
-                    { id: 'name', label: 'System Name' },
-                    { id: 'app_name', label: 'Application Name' },
-                    { id: 'check_type', label: 'Check Type' },
-                    { id: 'target', label: 'Target URL/IP' },
-                    { id: 'db_name', label: 'Database Name' },
-                    { id: 'db_type', label: 'Database Type' },
-                    { id: 'mount_points', label: 'Mount Points' },
-                    { id: 'owner', label: 'Owner' },
-                    { id: 'shutdown_sequence', label: 'Shutdown Sequence' },
-                    { id: 'cluster_nodes', label: 'Cluster Nodes' }
+                    { id: 'name', label: 'System Name', required: true },
+                    { id: 'app_name', label: 'Application Name', required: true },
+                    { id: 'check_type', label: 'Check Type', required: false },
+                    { id: 'target', label: 'Target URL/IP', required: true },
+                    { id: 'db_name', label: 'Database Name', required: false },
+                    { id: 'db_type', label: 'Database Type', required: false },
+                    { id: 'mount_points', label: 'Mount Points', required: false },
+                    { id: 'owner', label: 'Owner', required: false },
+                    { id: 'shutdown_sequence', label: 'Shutdown Sequence', required: false },
+                    { id: 'cluster_nodes', label: 'Cluster Nodes', required: false }
                 ];
 
                 mappingDiv.innerHTML = availableFields.map(field => `
                     <div class="col-md-6 mb-3">
                         <div class="form-group">
-                            <label class="form-label">${field.label}</label>
-                            <select class="form-select" data-field="${field.id}">
+                            <label class="form-label">
+                                ${field.label}
+                                ${field.required ? '<span class="text-danger">*</span>' : ''}
+                            </label>
+                            <select class="form-select" data-field="${field.id}" ${field.required ? 'required' : ''}>
                                 <option value="">-- Skip Field --</option>
                                 ${data.headers.map(h => `<option value="${h}">${h}</option>`).join('')}
                             </select>
+                            ${field.required ? 
+                                '<div class="form-text text-danger">This field is required</div>' : 
+                                ''}
                         </div>
                     </div>
                 `).join('');
@@ -706,13 +761,28 @@
                 return;
             }
 
-            // Get mapping
+            // Validate required fields
+            const requiredFields = ['name', 'app_name', 'target'];
             const mapping = {};
+            let missingRequired = false;
+
             document.querySelectorAll('#fieldMapping select').forEach(select => {
                 if (select.value) {
                     mapping[select.dataset.field] = select.value;
                 }
+                // Check if required field is missing
+                if (select.required && !select.value) {
+                    select.classList.add('is-invalid');
+                    missingRequired = true;
+                } else {
+                    select.classList.remove('is-invalid');
+                }
             });
+
+            if (missingRequired) {
+                showToast('Please map all required fields', 'error');
+                return;
+            }
 
             const formData = new FormData();
             formData.append('file', file);
@@ -728,6 +798,11 @@
                     showToast(data.error, 'error');
                 } else {
                     showToast(data.message, 'success');
+                    if (data.warnings) {
+                        data.warnings.forEach(warning => {
+                            showToast(warning, 'info', 8000);
+                        });
+                    }
                     bootstrap.Modal.getInstance(document.getElementById('csvMappingModal')).hide();
                     fetchSystems();
                 }

@@ -328,6 +328,56 @@ def import_mapped_csv():
     except Exception as e:
         return jsonify({"error": f"Error processing CSV file: {str(e)}"}), 400
 
+@app.route('/api/csv/template', methods=['GET'])
+def download_csv_template():
+    try:
+        # Create a StringIO object to write CSV data
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # Write headers
+        headers = [
+            'System Name',
+            'Application Name',
+            'Check Type',
+            'Target URL/IP',
+            'Database Name',
+            'Database Type',
+            'Mount Points',
+            'Owner',
+            'Shutdown Sequence',
+            'Cluster Nodes'
+        ]
+        writer.writerow(headers)
+        
+        # Write example row
+        example_row = [
+            'Example System',
+            'Example App',
+            'http',
+            'http://example.com',
+            'example_db',
+            'postgres',
+            '/mnt/data,/mnt/logs',
+            'John Doe',
+            'service1,service2,service3',
+            'node1.example.com,node2.example.com'
+        ]
+        writer.writerow(example_row)
+        
+        # Create the response
+        output.seek(0)
+        return Response(
+            output.getvalue(),
+            mimetype='text/csv',
+            headers={
+                'Content-Disposition': 'attachment; filename=systems_template.csv',
+                'Content-Type': 'text/csv'
+            }
+        )
+    except Exception as e:
+        return jsonify({"error": f"Error generating template: {str(e)}"}), 500
+
 if __name__ == '__main__':
     status_thread = threading.Thread(target=update_status)
     status_thread.daemon = True
