@@ -118,33 +118,26 @@
     </style>
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
         <div class="container-fluid">
-            <a class="navbar-brand" href="#">Application Monitor</a>
-            <div class="d-flex">
-                <button class="btn btn-primary me-2" data-bs-toggle="modal" data-bs-target="#addSystemWizardModal">
-                    <i class="fas fa-plus me-2"></i>Add System
-                </button>
-                <div class="dropdown">
-                    <button class="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
-                        <i class="fas fa-file-import me-2"></i>Import
-                    </button>
-                    <ul class="dropdown-menu">
-                        <li><a class="dropdown-item" href="#" onclick="document.getElementById('csvFile').click()">Quick Import CSV</a></li>
-                        <li><a class="dropdown-item" href="#" onclick="openCSVMapping()">Map & Import CSV</a></li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item" href="/api/download/example-csv" download>Download Example CSV</a></li>
-                    </ul>
-                </div>
-                <input type="file" id="csvFile" accept=".csv" style="display: none" onchange="importCSV(this)">
-                <button id="refreshButton" class="btn btn-sm btn-primary" style="margin-left: 10px;">
-                    <i class="bi bi-arrow-clockwise"></i> Check All Systems
-                </button>
+            <a class="navbar-brand" href="#">App Monitor</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="#" onclick="showSystems()">Systems</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="showSummary()">Summary</a>
+                    </li>
+                </ul>
             </div>
         </div>
     </nav>
 
-    <div class="container-fluid mt-4">
+    <div id="systemsPage" class="container">
         <div class="card">
             <div class="card-body">
                 <div class="table-responsive">
@@ -165,6 +158,73 @@
                         <tbody>
                         </tbody>
                     </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="summaryPage" class="container" style="display: none;">
+        <h2>Systems Summary</h2>
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">System Status</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between mb-3">
+                            <span>Total Systems:</span>
+                            <span id="total-systems" class="badge bg-secondary">0</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-3">
+                            <span>Online:</span>
+                            <span id="online-systems" class="badge bg-success">0</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-3">
+                            <span>Offline:</span>
+                            <span id="offline-systems" class="badge bg-danger">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Database Status</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between mb-3">
+                            <span>DB Services Online:</span>
+                            <span id="db-online" class="badge bg-success">0</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-3">
+                            <span>DB Services Offline:</span>
+                            <span id="db-offline" class="badge bg-danger">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Sequence Status</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between mb-3">
+                            <span>Not Started:</span>
+                            <span id="sequence-not-started" class="badge bg-secondary">0</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-3">
+                            <span>In Progress:</span>
+                            <span id="sequence-in-progress" class="badge bg-warning">0</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-3">
+                            <span>Completed:</span>
+                            <span id="sequence-completed" class="badge bg-success">0</span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -411,43 +471,9 @@
     <!-- Toast Container -->
     <div class="toast-container"></div>
 
-    <!-- Summary Window -->
-    <div class="summary-window">
-        <h4>Systems Summary</h4>
-        <div class="summary-item">
-            <span class="summary-label">Total Systems:</span>
-            <span id="total-systems">0</span>
-        </div>
-        <div class="summary-item">
-            <span class="summary-label">Online:</span>
-            <span id="online-systems">0</span>
-        </div>
-        <div class="summary-item">
-            <span class="summary-label">Offline:</span>
-            <span id="offline-systems">0</span>
-        </div>
-        <div class="summary-item">
-            <span class="summary-label">DB Services Online:</span>
-            <span id="db-online">0</span>
-        </div>
-        <div class="summary-item">
-            <span class="summary-label">DB Services Offline:</span>
-            <span id="db-offline">0</span>
-        </div>
-        <h5>Sequence Status</h5>
-        <div class="summary-item">
-            <span class="summary-label">Not Started:</span>
-            <span id="sequence-not-started">0</span>
-        </div>
-        <div class="summary-item">
-            <span class="summary-label">In Progress:</span>
-            <span id="sequence-in-progress">0</span>
-        </div>
-        <div class="summary-item">
-            <span class="summary-label">Completed:</span>
-            <span id="sequence-completed">0</span>
-        </div>
-    </div>
+    <button id="refreshButton" class="btn btn-sm btn-success" style="margin-left: 10px;" title="Test all systems" aria-label="Trigger test for all systems">
+        <i class="fas fa-sync-alt"></i> Trigger All Tests
+    </button>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script>
@@ -524,14 +550,20 @@
                     </td>
                     <td>
                         <div class="btn-group">
-                            <button class="btn btn-sm btn-primary" onclick="checkSystem('${systemId}')">
-                                <i class="bi bi-arrow-clockwise"></i>
+                            <button class="btn btn-sm btn-success" onclick="checkSystem('${systemId}')"
+                                    title="Test system connectivity and services"
+                                    aria-label="Trigger system test">
+                                <i class="fas fa-sync-alt"></i> Trigger Test
                             </button>
-                            <button class="btn btn-sm btn-outline-primary" onclick="editSystem('${systemId}')" title="Edit">
-                                <i class="fas fa-edit"></i>
+                            <button class="btn btn-sm btn-info" onclick="editSystem('${systemId}')"
+                                    title="Edit system configuration"
+                                    aria-label="Edit system">
+                                <i class="fas fa-edit"></i> Edit
                             </button>
-                            <button class="btn btn-sm btn-outline-danger" onclick="deleteSystem('${systemId}')" title="Delete">
-                                <i class="fas fa-trash"></i>
+                            <button class="btn btn-sm btn-danger" onclick="deleteSystem('${systemId}')"
+                                    title="Delete this system"
+                                    aria-label="Delete system">
+                                <i class="fas fa-trash"></i> Delete
                             </button>
                         </div>
                     </td>
@@ -1272,25 +1304,30 @@
                 row.innerHTML = `
                     <td>${system.name}</td>
                     <td>${system.app_name || 'N/A'}</td>
-                    <td>${system.check_type || 'ping'}</td>
                     <td>${system.target || 'N/A'}</td>
                     <td>${system.db_name || 'N/A'}</td>
-                    <td>${system.db_type || 'N/A'}</td>
-                    <td>${system.owner || 'N/A'}</td>
-                    <td>${system.shutdown_sequence || 'N/A'}</td>
-                    <td>${system.cluster_nodes ? system.cluster_nodes.join(', ') : 'N/A'}</td>
                     <td>
-                        <span class="badge ${statusClass}" ${errorTooltip}>
-                            ${statusText}
+                        <span class="status-badge ${system.status ? 'online' : 'offline'}"
+                              title="${system.last_error || (system.status ? 'System is online' : 'System is offline')}">
+                            ${system.status ? 'Online' : 'Offline'}
                         </span>
                     </td>
                     <td>${lastCheck}</td>
                     <td>
-                        <button class="btn btn-sm btn-primary" onclick="checkSystem('${systemId}')">
-                            <i class="bi bi-arrow-clockwise"></i>
+                        <button class="btn btn-sm btn-success" onclick="checkSystem('${systemId}')"
+                                title="Test system connectivity and services"
+                                aria-label="Trigger system test">
+                            <i class="fas fa-sync-alt"></i> Trigger Test
                         </button>
-                        <button class="btn btn-sm btn-danger" onclick="deleteSystem('${systemId}')">
-                            <i class="bi bi-trash"></i>
+                        <button class="btn btn-sm btn-info" onclick="editSystem('${systemId}')"
+                                title="Edit system configuration"
+                                aria-label="Edit system">
+                            <i class="fas fa-edit"></i> Edit
+                        </button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteSystem('${systemId}')"
+                                title="Delete this system"
+                                aria-label="Delete system">
+                            <i class="fas fa-trash"></i> Delete
                         </button>
                     </td>
                 `;
@@ -1373,23 +1410,27 @@
                         : ''}
                 </td>
                 <td>
-                    <select class="form-control sequence-status" onchange="updateSequenceStatus('${system._id}', this.value)">
+                    <select class="form-control sequence-status" onchange="updateSequenceStatus('${system._id}', this.value)"
+                            aria-label="Update sequence status">
                         <option value="not_started" ${system.sequence_status === 'not_started' ? 'selected' : ''}>Not Started</option>
                         <option value="in_progress" ${system.sequence_status === 'in_progress' ? 'selected' : ''}>In Progress</option>
                         <option value="completed" ${system.sequence_status === 'completed' ? 'selected' : ''}>Completed</option>
                     </select>
                 </td>
                 <td>
-                    <button class="btn btn-sm btn-primary" onclick="checkSystem('${system._id}')" 
-                            title="Check system status including ping, HTTP, and database">
-                        <i class="fas fa-sync-alt"></i> Check
+                    <button class="btn btn-sm btn-success" onclick="checkSystem('${system._id}')"
+                            title="Test system connectivity and services"
+                            aria-label="Trigger system test">
+                        <i class="fas fa-sync-alt"></i> Trigger Test
                     </button>
                     <button class="btn btn-sm btn-info" onclick="editSystem('${system._id}')"
-                            title="Edit system configuration">
+                            title="Edit system configuration"
+                            aria-label="Edit system">
                         <i class="fas fa-edit"></i> Edit
                     </button>
                     <button class="btn btn-sm btn-danger" onclick="deleteSystem('${system._id}')"
-                            title="Delete this system">
+                            title="Delete this system"
+                            aria-label="Delete system">
                         <i class="fas fa-trash"></i> Delete
                     </button>
                 </td>
@@ -1397,29 +1438,29 @@
             return row;
         }
 
-        // Add periodic updates
+        // Add page navigation functions
+        function showSystems() {
+            document.getElementById('systemsPage').style.display = 'block';
+            document.getElementById('summaryPage').style.display = 'none';
+            document.querySelector('a[onclick="showSystems()"]').classList.add('active');
+            document.querySelector('a[onclick="showSummary()"]').classList.remove('active');
+        }
+
+        function showSummary() {
+            document.getElementById('systemsPage').style.display = 'none';
+            document.getElementById('summaryPage').style.display = 'block';
+            document.querySelector('a[onclick="showSystems()"]').classList.remove('active');
+            document.querySelector('a[onclick="showSummary()"]').classList.add('active');
+            updateSummary(); // Update summary when showing the page
+        }
+
+        // Call updateSummary periodically
         setInterval(updateSummary, 30000); // Update summary every 30 seconds
         
-        // Call updateSummary when page loads and after system changes
-        document.addEventListener('DOMContentLoaded', updateSummary);
-        
-        // Update original fetchSystems to call updateSummary
-        const originalFetchSystems = fetchSystems;
-        fetchSystems = function() {
-            originalFetchSystems();
-            updateSummary();
-        };
-
-        // Initialize
+        // Initialize pages
         document.addEventListener('DOMContentLoaded', () => {
-            // Add form submit handler
-            document.getElementById('editSystemForm').addEventListener('submit', saveEditedSystem);
-            
-            // Initial load
-            fetchSystems();
-            
-            // Setup refresh interval
-            setInterval(fetchSystems, 60000); // Refresh every minute
+            showSystems(); // Start with systems page
+            updateSummary(); // Initial summary update
         });
     </script>
 </body>
