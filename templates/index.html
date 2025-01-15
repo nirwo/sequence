@@ -262,52 +262,83 @@
                         <!-- Step 3: Additional Details -->
                         <div class="wizard-step d-none" data-step="3">
                             <h6 class="mb-3">Additional Details</h6>
+                            
+                            <!-- Database Section -->
                             <div class="mb-3">
-                                <label class="form-label">Database Name</label>
-                                <input type="text" class="form-control" name="db_name">
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">Database Type</label>
-                                <select class="form-select" name="db_type">
-                                    <option value="">None</option>
-                                    <option value="mysql">MySQL</option>
-                                    <option value="postgres">PostgreSQL</option>
-                                    <option value="mongodb">MongoDB</option>
-                                    <option value="oracle">Oracle</option>
-                                </select>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">Mount Points</label>
-                                <div id="mountPointsContainer">
-                                    <div class="input-group mb-2">
-                                        <input type="text" class="form-control mount-point-input" 
-                                               placeholder="/mnt/data"
-                                               pattern="^/[a-zA-Z0-9/_-]+$"
-                                               oninput="validateMountPoint(this)">
-                                        <button class="btn btn-outline-secondary" type="button" onclick="addMountPoint()">
-                                            <i class="bi bi-plus"></i>
-                                        </button>
-                                    </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="hasDatabase" onchange="toggleDatabaseFields()">
+                                    <label class="form-check-label" for="hasDatabase">
+                                        This system has a database
+                                    </label>
                                 </div>
-                                <input type="hidden" name="mount_points" id="mountPointsValue">
-                                <div class="form-text">Mount points must start with / and contain only letters, numbers, underscores, and hyphens</div>
-                                <div class="invalid-feedback">Invalid mount point format</div>
                             </div>
-                            <div class="mb-3">
-                                <label class="form-label">Shutdown Sequence</label>
-                                <div id="shutdownStepsContainer">
-                                    <div class="input-group mb-2">
-                                        <span class="input-group-text">Step 1</span>
-                                        <input type="text" class="form-control shutdown-step-input" 
-                                               placeholder="e.g., service nginx stop"
-                                               oninput="updateShutdownSequence()">
-                                        <button class="btn btn-outline-secondary" type="button" onclick="addShutdownStep()">
-                                            <i class="bi bi-plus"></i>
-                                        </button>
-                                    </div>
+                            
+                            <div id="databaseFields" class="d-none">
+                                <div class="mb-3">
+                                    <label class="form-label">Database Type</label>
+                                    <select class="form-select" name="db_type" id="dbType">
+                                        <option value="">Select Database Type</option>
+                                        <option value="mysql">MySQL</option>
+                                        <option value="postgres">PostgreSQL</option>
+                                        <option value="mongodb">MongoDB</option>
+                                        <option value="oracle">Oracle</option>
+                                    </select>
                                 </div>
-                                <input type="hidden" name="shutdown_sequence" id="shutdownSequenceValue">
-                                <div class="form-text">Enter shutdown commands in the order they should be executed</div>
+                                <div class="mb-3">
+                                    <label class="form-label">Database Name</label>
+                                    <input type="text" class="form-control" name="db_name" id="dbName">
+                                </div>
+                            </div>
+
+                            <!-- Mount Points Section -->
+                            <div class="mb-3">
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="hasMountPoints" onchange="toggleMountPoints()">
+                                    <label class="form-check-label" for="hasMountPoints">
+                                        Add mount points
+                                    </label>
+                                </div>
+                                <div id="mountPointsSection" class="d-none">
+                                    <div id="mountPointsContainer">
+                                        <div class="input-group mb-2">
+                                            <input type="text" class="form-control mount-point-input" 
+                                                   placeholder="/mnt/data"
+                                                   pattern="^/[a-zA-Z0-9/_-]+$"
+                                                   oninput="validateMountPoint(this)">
+                                            <button class="btn btn-outline-secondary" type="button" onclick="addMountPoint()">
+                                                <i class="bi bi-plus"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <input type="hidden" name="mount_points" id="mountPointsValue">
+                                    <div class="form-text">Mount points must start with / and contain only letters, numbers, underscores, and hyphens</div>
+                                    <div class="invalid-feedback">Invalid mount point format</div>
+                                </div>
+                            </div>
+
+                            <!-- Shutdown Sequence Section -->
+                            <div class="mb-3">
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="hasShutdownSequence" onchange="toggleShutdownSequence()">
+                                    <label class="form-check-label" for="hasShutdownSequence">
+                                        Add shutdown sequence
+                                    </label>
+                                </div>
+                                <div id="shutdownSequenceSection" class="d-none">
+                                    <div id="shutdownStepsContainer">
+                                        <div class="input-group mb-2">
+                                            <span class="input-group-text">Step 1</span>
+                                            <input type="text" class="form-control shutdown-step-input" 
+                                                   placeholder="e.g., service nginx stop"
+                                                   oninput="updateShutdownSequence()">
+                                            <button class="btn btn-outline-secondary" type="button" onclick="addShutdownStep()">
+                                                <i class="bi bi-plus"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <input type="hidden" name="shutdown_sequence" id="shutdownSequenceValue">
+                                    <div class="form-text">Enter shutdown commands in the order they should be executed</div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -711,6 +742,11 @@
 
         // Mount points handling
         function validateMountPoint(input) {
+            if (!input.value.trim()) {
+                input.classList.remove('is-invalid', 'is-valid');
+                return true;
+            }
+            
             const isValid = /^\/[a-zA-Z0-9/_-]+$/.test(input.value);
             if (isValid) {
                 input.classList.remove('is-invalid');
@@ -720,6 +756,7 @@
                 input.classList.add('is-invalid');
             }
             updateMountPoints();
+            return isValid;
         }
 
         function addMountPoint() {
@@ -782,6 +819,60 @@
             document.getElementById('shutdownSequenceValue').value = steps.join(';');
         }
 
+        // Toggle functions for optional sections
+        function toggleDatabaseFields() {
+            const hasDatabase = document.getElementById('hasDatabase').checked;
+            const databaseFields = document.getElementById('databaseFields');
+            databaseFields.classList.toggle('d-none', !hasDatabase);
+            
+            if (!hasDatabase) {
+                document.getElementById('dbType').value = '';
+                document.getElementById('dbName').value = '';
+            }
+        }
+
+        function toggleMountPoints() {
+            const hasMountPoints = document.getElementById('hasMountPoints').checked;
+            const mountPointsSection = document.getElementById('mountPointsSection');
+            mountPointsSection.classList.toggle('d-none', !hasMountPoints);
+            
+            if (!hasMountPoints) {
+                document.getElementById('mountPointsValue').value = '';
+                document.getElementById('mountPointsContainer').innerHTML = `
+                    <div class="input-group mb-2">
+                        <input type="text" class="form-control mount-point-input" 
+                               placeholder="/mnt/data"
+                               pattern="^/[a-zA-Z0-9/_-]+$"
+                               oninput="validateMountPoint(this)">
+                        <button class="btn btn-outline-secondary" type="button" onclick="addMountPoint()">
+                            <i class="bi bi-plus"></i>
+                        </button>
+                    </div>
+                `;
+            }
+        }
+
+        function toggleShutdownSequence() {
+            const hasShutdownSequence = document.getElementById('hasShutdownSequence').checked;
+            const shutdownSequenceSection = document.getElementById('shutdownSequenceSection');
+            shutdownSequenceSection.classList.toggle('d-none', !hasShutdownSequence);
+            
+            if (!hasShutdownSequence) {
+                document.getElementById('shutdownSequenceValue').value = '';
+                document.getElementById('shutdownStepsContainer').innerHTML = `
+                    <div class="input-group mb-2">
+                        <span class="input-group-text">Step 1</span>
+                        <input type="text" class="form-control shutdown-step-input" 
+                               placeholder="e.g., service nginx stop"
+                               oninput="updateShutdownSequence()">
+                        <button class="btn btn-outline-secondary" type="button" onclick="addShutdownStep()">
+                            <i class="bi bi-plus"></i>
+                        </button>
+                    </div>
+                `;
+            }
+        }
+
         // Modified submitWizard function
         function submitWizard() {
             const form = document.getElementById('addSystemWizardForm');
@@ -803,14 +894,15 @@
                 }
             });
 
-            // Validate mount points
-            const mountPoints = document.querySelectorAll('.mount-point-input');
-            mountPoints.forEach(input => {
-                if (input.value.trim() && !/^\/[a-zA-Z0-9/_-]+$/.test(input.value)) {
-                    input.classList.add('is-invalid');
-                    isValid = false;
-                }
-            });
+            // Validate mount points if enabled
+            if (document.getElementById('hasMountPoints').checked) {
+                const mountPoints = document.querySelectorAll('.mount-point-input');
+                mountPoints.forEach(input => {
+                    if (input.value.trim() && !validateMountPoint(input)) {
+                        isValid = false;
+                    }
+                });
+            }
             
             if (!isValid) {
                 showToast('Please correct the invalid fields', 'error');
@@ -828,15 +920,35 @@
                 }
             });
 
-            // Handle array fields
-            ['mount_points', 'shutdown_sequence'].forEach(field => {
-                if (system[field]) {
-                    system[field] = system[field].split(';').filter(item => item.trim());
-                    if (system[field].length === 0) {
-                        system[field] = null;
-                    }
+            // Handle database fields
+            if (!document.getElementById('hasDatabase').checked) {
+                system.db_type = null;
+                system.db_name = null;
+            }
+
+            // Handle mount points
+            if (!document.getElementById('hasMountPoints').checked) {
+                system.mount_points = null;
+            } else if (system.mount_points) {
+                system.mount_points = system.mount_points.split(';')
+                    .map(point => point.trim())
+                    .filter(point => point);
+                if (system.mount_points.length === 0) {
+                    system.mount_points = null;
                 }
-            });
+            }
+
+            // Handle shutdown sequence
+            if (!document.getElementById('hasShutdownSequence').checked) {
+                system.shutdown_sequence = null;
+            } else if (system.shutdown_sequence) {
+                system.shutdown_sequence = system.shutdown_sequence.split(';')
+                    .map(step => step.trim())
+                    .filter(step => step);
+                if (system.shutdown_sequence.length === 0) {
+                    system.shutdown_sequence = null;
+                }
+            }
 
             // Handle cluster nodes
             if (system.cluster_nodes) {
@@ -879,29 +991,15 @@
             const form = document.getElementById('addSystemWizardForm');
             if (form) {
                 form.reset();
-                // Clear mount points and shutdown sequence containers
-                document.getElementById('mountPointsContainer').innerHTML = `
-                    <div class="input-group mb-2">
-                        <input type="text" class="form-control mount-point-input" 
-                               placeholder="/mnt/data"
-                               pattern="^/[a-zA-Z0-9/_-]+$"
-                               oninput="validateMountPoint(this)">
-                        <button class="btn btn-outline-secondary" type="button" onclick="addMountPoint()">
-                            <i class="bi bi-plus"></i>
-                        </button>
-                    </div>
-                `;
-                document.getElementById('shutdownStepsContainer').innerHTML = `
-                    <div class="input-group mb-2">
-                        <span class="input-group-text">Step 1</span>
-                        <input type="text" class="form-control shutdown-step-input" 
-                               placeholder="e.g., service nginx stop"
-                               oninput="updateShutdownSequence()">
-                        <button class="btn btn-outline-secondary" type="button" onclick="addShutdownStep()">
-                            <i class="bi bi-plus"></i>
-                        </button>
-                    </div>
-                `;
+                
+                // Reset all toggleable sections
+                document.getElementById('hasDatabase').checked = false;
+                document.getElementById('hasMountPoints').checked = false;
+                document.getElementById('hasShutdownSequence').checked = false;
+                
+                toggleDatabaseFields();
+                toggleMountPoints();
+                toggleShutdownSequence();
             }
             // Reset validation state
             form.querySelectorAll('.is-invalid, .is-valid').forEach(input => {
