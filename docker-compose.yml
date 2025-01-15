@@ -9,7 +9,7 @@ services:
     environment:
       - FLASK_APP=app.py
       - FLASK_ENV=development
-      - MONGO_URI=mongodb://app_user:app_password@mongodb:27017/app_monitor
+      - MONGO_URI=mongodb://app_user:app_password@mongodb:27017/app_monitor?authSource=app_monitor
     volumes:
       - .:/app
     depends_on:
@@ -25,6 +25,8 @@ services:
       - MONGO_INITDB_DATABASE=app_monitor
       - MONGO_INITDB_ROOT_USERNAME=root
       - MONGO_INITDB_ROOT_PASSWORD=rootpassword
+      - MONGO_INITDB_USERNAME=app_user
+      - MONGO_INITDB_PASSWORD=app_password
     ports:
       - "27017:27017"
     volumes:
@@ -33,6 +35,7 @@ services:
     networks:
       - app-network
     restart: unless-stopped
+    command: ["mongod", "--auth"]
 
 networks:
   app-network:
