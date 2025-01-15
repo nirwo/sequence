@@ -872,7 +872,7 @@ def test_ping(host):
         
         # Ping command parameters
         param = '-n' if platform.system().lower() == 'windows' else '-c'
-        command = ['/usr/bin/ping', param, '1', host]
+        command = ['ping', param, '1', host]  # Using just 'ping' as it's in PATH
         
         # Use subprocess.Popen to get output
         process = subprocess.Popen(
