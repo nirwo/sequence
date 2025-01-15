@@ -66,7 +66,7 @@ def get_systems():
                         system['cluster_nodes'] = [{'host': n, 'status': False} for n in system['cluster_nodes']]
                         break
 
-        return jsonify({'systems': systems})
+        return jsonify(systems)
     except Exception as e:
         print(f"Error fetching systems: {str(e)}")
         return jsonify({"error": str(e)}), 500

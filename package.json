@@ -1,0 +1,13 @@
+{
+    "name": "app-monitor",
+    "version": "1.0.0",
+    "description": "Application monitoring system",
+    "scripts": {
+        "build": "tsc",
+        "watch": "tsc -w"
+    },
+    "devDependencies": {
+        "typescript": "^5.0.0",
+        "@types/bootstrap": "^5.2.0"
+    }
+}
