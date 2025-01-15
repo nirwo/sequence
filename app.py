@@ -65,6 +65,10 @@ def add_system():
 @app.route('/api/systems/<system_id>', methods=['PUT'])
 def update_system(system_id):
     try:
+        # Validate ObjectId format
+        if not ObjectId.is_valid(system_id):
+            return jsonify({"error": "Invalid system ID format"}), 400
+
         system = request.json
         
         # Handle cluster nodes
@@ -95,6 +99,10 @@ def update_system(system_id):
 @app.route('/api/systems/<system_id>', methods=['DELETE'])
 def delete_system(system_id):
     try:
+        # Validate ObjectId format
+        if not ObjectId.is_valid(system_id):
+            return jsonify({"error": "Invalid system ID format"}), 400
+
         result = mongo.db.systems.delete_one({'_id': ObjectId(system_id)})
         if result.deleted_count == 0:
             return jsonify({"error": "System not found"}), 404
@@ -226,85 +234,99 @@ def preview_csv():
         stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
         csv_reader = csv.reader(stream)
         
-        # Get headers and first few rows
-        headers = next(csv_reader)
+        # Get headers and preview rows
+        headers = next(csv_reader)  # First row as headers
         preview_rows = []
-        for _ in range(3):  # Preview first 3 rows
+        for _ in range(5):  # Preview first 5 rows
             try:
                 preview_rows.append(next(csv_reader))
             except StopIteration:
                 break
         
-        # Get available fields from MongoDB schema
-        available_fields = [
-            {"id": "name", "label": "System Name"},
-            {"id": "app_name", "label": "Application Name"},
-            {"id": "check_type", "label": "Check Type"},
-            {"id": "target", "label": "Target URL/IP"},
-            {"id": "db_name", "label": "Database Name"},
-            {"id": "db_type", "label": "Database Type"},
-            {"id": "mount_points", "label": "Mount Points"},
-            {"id": "owner", "label": "Owner"},
-            {"id": "shutdown_sequence", "label": "Shutdown Sequence"},
-            {"id": "cluster_nodes", "label": "Cluster Nodes"}
-        ]
-        
         return jsonify({
             "headers": headers,
-            "preview_rows": preview_rows,
-            "available_fields": available_fields
+            "preview_rows": preview_rows
         })
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"error": f"Error processing CSV file: {str(e)}"}), 400
 
 @app.route('/api/csv/import', methods=['POST'])
-def import_csv_mapped():
+def import_mapped_csv():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+    
+    file = request.files['file']
+    if file.filename == '' or not file.filename.endswith('.csv'):
+        return jsonify({"error": "Invalid file format. Please upload a CSV file"}), 400
+
     try:
-        if 'file' not in request.files:
-            return jsonify({"error": "No file provided"}), 400
-        
-        file = request.files['file']
-        mapping = request.form.get('mapping')
+        # Get field mapping
+        mapping = json.loads(request.form.get('mapping', '{}'))
         if not mapping:
             return jsonify({"error": "No field mapping provided"}), 400
-        
-        mapping = json.loads(mapping)
-        
+
         # Read CSV content
         stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
         csv_reader = csv.DictReader(stream)
         
         systems_added = 0
-        for row in csv_reader:
-            system = {
-                "created_at": datetime.now(),
-                "last_check": datetime.now(),
-                "status": False
-            }
-            
-            # Apply mapping
-            for field, csv_header in mapping.items():
-                if csv_header and csv_header in row:
-                    value = row[csv_header].strip()
-                    if field == "cluster_nodes" and value:
-                        # Split cluster nodes by comma
-                        system[field] = [node.strip() for node in value.split(',')]
-                    elif field == "mount_points" and value:
-                        # Split mount points by semicolon
-                        system[field] = value.replace(';', ',')
-                    else:
-                        system[field] = value
-            
-            if system.get('name') and system.get('app_name'):  # Required fields
+        errors = []
+        
+        for row_num, row in enumerate(csv_reader, start=1):
+            try:
+                # Map fields according to provided mapping
+                system = {
+                    'created_at': datetime.now(),
+                    'last_check': datetime.now(),
+                    'status': False
+                }
+
+                for field, csv_header in mapping.items():
+                    if csv_header in row:
+                        value = row[csv_header].strip()
+                        if field == 'cluster_nodes' and value:
+                            system[field] = [node.strip() for node in value.split(',') if node.strip()]
+                        else:
+                            system[field] = value
+
+                # Validate required fields
+                if not system.get('name') or not system.get('app_name'):
+                    errors.append(f"Row {row_num}: System Name and Application Name are required")
+                    continue
+
+                # Handle check type
+                if system.get('check_type'):
+                    system['check_type'] = system['check_type'].lower()
+                    if system['check_type'] not in ['http', 'ping']:
+                        system['check_type'] = 'http'
+
+                # Handle target for cluster systems
+                if not system.get('target') and system.get('cluster_nodes'):
+                    system['target'] = system['cluster_nodes'][0]
+
+                # Validate target
+                if not system.get('target') and not system.get('cluster_nodes'):
+                    errors.append(f"Row {row_num}: Target URL/IP is required for non-cluster systems")
+                    continue
+
                 mongo.db.systems.insert_one(system)
                 systems_added += 1
-        
-        return jsonify({
+
+            except Exception as e:
+                errors.append(f"Row {row_num}: {str(e)}")
+
+        response = {
             "message": f"Successfully imported {systems_added} systems",
             "systems_added": systems_added
-        })
+        }
+        
+        if errors:
+            response["warnings"] = errors
+
+        return jsonify(response)
+
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"error": f"Error processing CSV file: {str(e)}"}), 400
 
 if __name__ == '__main__':
     status_thread = threading.Thread(target=update_status)

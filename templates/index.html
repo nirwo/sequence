@@ -391,6 +391,7 @@
             }
 
             systems.forEach(system => {
+                const systemId = system._id.$oid || system._id; // Handle both BSON ObjectId and string formats
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td>
@@ -404,13 +405,13 @@
                     <td>${system.target || ''}</td>
                     <td>${system.db_name || ''}</td>
                     <td>${system.owner || ''}</td>
-                    <td>${system.last_check ? new Date(system.last_check).toLocaleString() : ''}</td>
+                    <td>${system.last_check ? new Date(system.last_check.$date || system.last_check).toLocaleString() : ''}</td>
                     <td>
                         <div class="btn-group">
-                            <button class="btn btn-sm btn-outline-primary" onclick="editSystem('${system._id}')" title="Edit">
+                            <button class="btn btn-sm btn-outline-primary" onclick="editSystem('${systemId}')" title="Edit">
                                 <i class="fas fa-edit"></i>
                             </button>
-                            <button class="btn btn-sm btn-outline-danger" onclick="deleteSystem('${system._id}')" title="Delete">
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteSystem('${systemId}')" title="Delete">
                                 <i class="fas fa-trash"></i>
                             </button>
                         </div>
@@ -422,7 +423,7 @@
 
         // Edit system
         function editSystem(systemId) {
-            const system = systems.find(s => s._id === systemId);
+            const system = systems.find(s => (s._id.$oid || s._id) === systemId);
             if (!system) {
                 showToast('System not found', 'error');
                 return;
@@ -611,6 +612,128 @@
                 } else {
                     indicator.classList.remove('active', 'completed');
                 }
+            });
+        }
+
+        // CSV Import and Mapping Functions
+        function openCSVMapping() {
+            document.getElementById('csvMappingFile').value = '';
+            document.getElementById('csvPreview').classList.add('d-none');
+            document.getElementById('fieldMapping').innerHTML = '';
+            new bootstrap.Modal(document.getElementById('csvMappingModal')).show();
+        }
+
+        function previewCSV(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            fetch('/api/csv/preview', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    showToast(data.error, 'error');
+                    return;
+                }
+
+                // Show preview
+                const previewDiv = document.getElementById('csvPreview');
+                previewDiv.classList.remove('d-none');
+
+                // Set up header
+                const headerRow = '<tr>' + data.headers.map(h => `<th>${h}</th>`).join('') + '</tr>';
+                document.getElementById('csvPreviewHeader').innerHTML = headerRow;
+
+                // Set up preview rows
+                const previewRows = data.preview_rows.map(row => 
+                    '<tr>' + row.map(cell => `<td>${cell}</td>`).join('') + '</tr>'
+                ).join('');
+                document.getElementById('csvPreviewBody').innerHTML = previewRows;
+
+                // Set up field mapping
+                const mappingDiv = document.getElementById('fieldMapping');
+                const availableFields = [
+                    { id: 'name', label: 'System Name' },
+                    { id: 'app_name', label: 'Application Name' },
+                    { id: 'check_type', label: 'Check Type' },
+                    { id: 'target', label: 'Target URL/IP' },
+                    { id: 'db_name', label: 'Database Name' },
+                    { id: 'db_type', label: 'Database Type' },
+                    { id: 'mount_points', label: 'Mount Points' },
+                    { id: 'owner', label: 'Owner' },
+                    { id: 'shutdown_sequence', label: 'Shutdown Sequence' },
+                    { id: 'cluster_nodes', label: 'Cluster Nodes' }
+                ];
+
+                mappingDiv.innerHTML = availableFields.map(field => `
+                    <div class="col-md-6 mb-3">
+                        <div class="form-group">
+                            <label class="form-label">${field.label}</label>
+                            <select class="form-select" data-field="${field.id}">
+                                <option value="">-- Skip Field --</option>
+                                ${data.headers.map(h => `<option value="${h}">${h}</option>`).join('')}
+                            </select>
+                        </div>
+                    </div>
+                `).join('');
+
+                // Auto-map fields with matching names
+                availableFields.forEach(field => {
+                    const select = mappingDiv.querySelector(`select[data-field="${field.id}"]`);
+                    const matchingHeader = data.headers.find(h => 
+                        h.toLowerCase().replace(/[^a-z0-9]/g, '') === 
+                        field.label.toLowerCase().replace(/[^a-z0-9]/g, '')
+                    );
+                    if (matchingHeader) {
+                        select.value = matchingHeader;
+                    }
+                });
+            })
+            .catch(error => {
+                showToast('Error previewing CSV file: ' + error.message, 'error');
+            });
+        }
+
+        function importMappedCSV() {
+            const file = document.getElementById('csvMappingFile').files[0];
+            if (!file) {
+                showToast('Please select a CSV file', 'error');
+                return;
+            }
+
+            // Get mapping
+            const mapping = {};
+            document.querySelectorAll('#fieldMapping select').forEach(select => {
+                if (select.value) {
+                    mapping[select.dataset.field] = select.value;
+                }
+            });
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('mapping', JSON.stringify(mapping));
+
+            fetch('/api/csv/import', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    showToast(data.error, 'error');
+                } else {
+                    showToast(data.message, 'success');
+                    bootstrap.Modal.getInstance(document.getElementById('csvMappingModal')).hide();
+                    fetchSystems();
+                }
+            })
+            .catch(error => {
+                showToast('Error importing CSV file: ' + error.message, 'error');
             });
         }
 
