@@ -1,3 +1,16 @@
+# Stage 1: Build TypeScript
+FROM node:18-slim as ts-builder
+
+WORKDIR /app
+
+COPY package*.json ./
+COPY tsconfig.json ./
+RUN npm install
+
+COPY static/js/*.ts ./static/js/
+RUN npm run build
+
+# Stage 2: Python application
 FROM python:3.9-slim
 
 WORKDIR /app
@@ -19,6 +32,10 @@ RUN apt-get update && \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy TypeScript build output
+COPY --from=ts-builder /app/static/js/dist ./static/js/dist
+
+# Copy the rest of the application
 COPY . .
 RUN chown -R appuser:appuser /app
 
