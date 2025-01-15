@@ -1,4 +1,4 @@
-System Name,Application Name,Check Type,Target URL/IP,Database Name,Database Type,Mount Points,Owner,Shutdown Sequence,Cluster Nodes
-Web Server,Company Website,http,http://example.com,,,,John Doe,,
-Database Server,PostgreSQL DB,ping,192.168.1.100,main_db,postgres,/mnt/data,Jane Smith,service postgresql stop,
-Cluster App,Load Balancer,http,192.168.1.200,app_db,mysql,/mnt/app/data,Mike Johnson,service app stop,node1.example.com,node2.example.com
+name,app_name,check_type,target,db_name,db_type,mount_points,owner,shutdown_sequence,cluster_nodes
+webserver01,Company Website,http,http://example.com,,,,,,,
+dbserver01,PostgreSQL DB,ping,192.168.1.100,main_db,postgres,/mnt/data,Jane Smith,service postgresql stop,
+app-cluster,Load Balancer,http,192.168.1.200,app_db,mysql,/mnt/app/data,Mike Johnson,service app stop,app01.example.com;app02.example.com

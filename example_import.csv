@@ -1,4 +1,4 @@
-System Name,Application Name,Check Type,Target URL/IP,Database Name,Database Type,Mount Points,Owner,Shutdown Sequence,Cluster Nodes
-App Server 1,Customer Portal,http,https://portal.example.com,customer_db,PostgreSQL,/mnt/data;/mnt/logs,John Doe,"1. Stop nginx, 2. Stop application",
-DB Cluster Primary,Financial System,ping,db1.internal,finance_db,Oracle,/oracle/data,Jane Smith,"1. Drain connections, 2. Stop DB","db1.internal,db2.internal,db3.internal"
-Monitoring System,Grafana,http,http://monitor.example.com,tsdb,TimescaleDB,/data/grafana,Ops Team,systemctl stop grafana,
+name,app_name,check_type,target,db_name,db_type,mount_points,owner,shutdown_sequence,cluster_nodes
+app-server-01,Customer Portal,http,https://portal.example.com,customer_db,postgres,/mnt/data;/mnt/logs,John Doe,service nginx stop;service app stop,
+db-cluster-01,Financial System,ping,db1.internal,finance_db,oracle,/oracle/data,Jane Smith,drain_connections;stop_db,db1.internal;db2.internal;db3.internal
+monitor-01,Grafana,http,http://monitor.internal,grafana_db,mysql,/var/lib/grafana,Sarah Wilson,service grafana-server stop,

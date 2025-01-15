@@ -1,107 +1,139 @@
+// Create the database and collection
 db = db.getSiblingDB('app_monitor');
 
-// Create collections with schema validation
+// Drop existing collections to start fresh
+db.systems.drop();
+
+// Create the systems collection with validation
 db.createCollection('systems', {
     validator: {
         $jsonSchema: {
-            bsonType: 'object',
-            required: ['name', 'app_name', 'owner', 'created_at'],
+            bsonType: "object",
+            required: ["name", "created_at"],
             properties: {
                 name: {
-                    bsonType: 'string',
-                    description: 'System name - required'
+                    bsonType: "string",
+                    description: "Server name - required"
                 },
                 app_name: {
-                    bsonType: 'string',
-                    description: 'Application name - required'
+                    bsonType: ["string", "null"],
+                    description: "Application name - optional"
                 },
                 check_type: {
-                    enum: ['ping', 'http'],
-                    description: 'Type of check to perform'
+                    bsonType: "string",
+                    enum: ["http", "ping"],
+                    description: "Type of health check - defaults to ping"
                 },
                 target: {
-                    bsonType: 'string',
-                    description: 'Target IP or URL'
+                    bsonType: ["string", "null"],
+                    description: "Target URL or IP address"
                 },
                 db_name: {
-                    bsonType: 'string',
-                    description: 'Database name if applicable'
+                    bsonType: ["string", "null"],
+                    description: "Database name - optional"
                 },
                 db_type: {
-                    bsonType: 'string',
-                    description: 'Database type if applicable'
+                    bsonType: ["string", "null"],
+                    description: "Database type - optional"
                 },
                 mount_points: {
-                    bsonType: 'string',
-                    description: 'NFS/CIFS mount points'
+                    bsonType: ["array", "null"],
+                    items: {
+                        bsonType: "string"
+                    },
+                    description: "List of mount points - optional"
                 },
                 owner: {
-                    bsonType: 'string',
-                    description: 'Application owner - required'
+                    bsonType: ["string", "null"],
+                    description: "System owner - optional"
                 },
                 shutdown_sequence: {
-                    bsonType: 'string',
-                    description: 'Shutdown sequence instructions'
+                    bsonType: ["array", "null"],
+                    items: {
+                        bsonType: "string"
+                    },
+                    description: "Shutdown sequence steps - optional"
                 },
                 cluster_nodes: {
-                    bsonType: 'array',
-                    description: 'List of cluster nodes',
+                    bsonType: ["array", "null"],
                     items: {
-                        bsonType: 'string'
-                    }
-                },
-                status: {
-                    bsonType: 'bool',
-                    description: 'Current system status'
+                        bsonType: "string"
+                    },
+                    description: "List of cluster nodes - optional"
                 },
                 created_at: {
-                    bsonType: 'date',
-                    description: 'Creation timestamp - required'
+                    bsonType: "date",
+                    description: "Creation timestamp - required"
                 },
                 last_check: {
-                    bsonType: 'date',
-                    description: 'Last check timestamp'
+                    bsonType: ["date", "null"],
+                    description: "Last health check timestamp"
+                },
+                status: {
+                    bsonType: "bool",
+                    description: "Current system status"
                 }
             }
         }
-    }
+    },
+    validationLevel: "moderate",  // Changed to moderate to be more flexible with existing data
+    validationAction: "warn"      // Changed to warn to log validation errors instead of rejecting
 });
 
 // Create indexes
 db.systems.createIndex({ "name": 1 }, { unique: true });
 db.systems.createIndex({ "app_name": 1 });
-db.systems.createIndex({ "owner": 1 });
 db.systems.createIndex({ "status": 1 });
 db.systems.createIndex({ "created_at": 1 });
+db.systems.createIndex({ "last_check": 1 });
 
-// Insert some sample data if the collection is empty
-if (db.systems.countDocuments() === 0) {
-    db.systems.insertMany([
-        {
-            name: "Sample App Server",
-            app_name: "Sample Application",
-            check_type: "http",
-            target: "http://app-server:8080",
-            owner: "System Admin",
-            status: false,
-            created_at: new Date(),
-            last_check: new Date(),
-            shutdown_sequence: "1. Stop application service\n2. Verify no active connections",
-            mount_points: "/mnt/data,/mnt/logs"
-        },
-        {
-            name: "Database Cluster",
-            app_name: "Core Database",
-            check_type: "ping",
-            target: "db-server",
-            db_name: "production_db",
-            db_type: "PostgreSQL",
-            owner: "DBA Team",
-            status: false,
-            created_at: new Date(),
-            last_check: new Date(),
-            shutdown_sequence: "1. Stop application servers\n2. Wait for connections to drain\n3. Shutdown database",
-            cluster_nodes: ["db-node-1.internal", "db-node-2.internal", "db-node-3.internal"]
-        }
-    ]);
-}
+// Insert sample data
+db.systems.insertMany([
+    {
+        name: "webserver01",
+        app_name: "Company Website",
+        check_type: "http",
+        target: "http://webserver01:8080",
+        mount_points: ["/mnt/logs"],
+        owner: "John Doe",
+        shutdown_sequence: ["service nginx stop", "service app stop"],
+        created_at: new Date(),
+        last_check: null,
+        status: false
+    },
+    {
+        name: "dbserver01",
+        check_type: "ping",
+        target: "192.168.1.100",
+        db_name: "main_db",
+        db_type: "postgres",
+        mount_points: ["/mnt/data", "/mnt/backup"],
+        owner: "Jane Smith",
+        shutdown_sequence: ["service postgresql stop"],
+        created_at: new Date(),
+        last_check: null,
+        status: false
+    },
+    {
+        name: "app-cluster",
+        app_name: "Load Balancer",
+        check_type: "http",
+        target: "http://app-lb:8080",
+        db_name: "app_db",
+        db_type: "mysql",
+        mount_points: ["/mnt/app/data"],
+        owner: "Mike Johnson",
+        shutdown_sequence: ["service haproxy stop", "service app stop"],
+        cluster_nodes: ["app01.example.com", "app02.example.com", "app03.example.com"],
+        created_at: new Date(),
+        last_check: null,
+        status: false
+    }
+]);
+
+// Verify the setup
+print("Checking database setup...");
+print("Number of systems:", db.systems.count());
+print("Indexes:");
+db.systems.getIndexes().forEach(index => printjson(index));
+print("MongoDB initialization completed successfully!");
