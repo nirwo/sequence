@@ -840,17 +840,21 @@
                 return;
             }
 
-            // Validate required fields
-            const requiredFields = ['name', 'app_name', 'target'];
+            // Get mapping
             const mapping = {};
             let missingRequired = false;
 
+            // Check required fields
+            const requiredFields = ['name'];  // Only server name is required
+            
             document.querySelectorAll('#fieldMapping select').forEach(select => {
+                const field = select.dataset.field;
                 if (select.value) {
-                    mapping[select.dataset.field] = select.value;
+                    mapping[field] = select.value;
                 }
+                
                 // Check if required field is missing
-                if (select.required && !select.value) {
+                if (requiredFields.includes(field) && !select.value) {
                     select.classList.add('is-invalid');
                     missingRequired = true;
                 } else {
@@ -859,13 +863,19 @@
             });
 
             if (missingRequired) {
-                showToast('Please map all required fields', 'error');
+                showToast('Please map the Server Name field', 'error');
                 return;
             }
 
             const formData = new FormData();
             formData.append('file', file);
             formData.append('mapping', JSON.stringify(mapping));
+
+            // Show loading state
+            const importBtn = document.querySelector('#csvMappingModal .btn-primary');
+            const originalText = importBtn.innerHTML;
+            importBtn.disabled = true;
+            importBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Importing...';
 
             fetch('/api/csv/import', {
                 method: 'POST',
@@ -877,10 +887,9 @@
                     showToast(data.error, 'error');
                 } else {
                     showToast(data.message, 'success');
-                    if (data.warnings) {
-                        data.warnings.forEach(warning => {
-                            showToast(warning, 'info', 8000);
-                        });
+                    if (data.warnings && data.warnings.length > 0) {
+                        // Show warnings in a modal
+                        showImportWarnings(data.warnings);
                     }
                     bootstrap.Modal.getInstance(document.getElementById('csvMappingModal')).hide();
                     fetchSystems();
@@ -888,7 +897,56 @@
             })
             .catch(error => {
                 showToast('Error importing CSV file: ' + error.message, 'error');
+            })
+            .finally(() => {
+                // Reset button state
+                importBtn.disabled = false;
+                importBtn.innerHTML = originalText;
             });
+        }
+
+        function showImportWarnings(warnings) {
+            const modalHtml = `
+                <div class="modal fade" id="importWarningsModal" tabindex="-1">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Import Warnings</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="alert alert-warning">
+                                    Some rows could not be imported. Please review the warnings below:
+                                </div>
+                                <ul class="list-group">
+                                    ${warnings.map(warning => `
+                                        <li class="list-group-item text-warning">
+                                            <i class="fas fa-exclamation-triangle me-2"></i>
+                                            ${warning}
+                                        </li>
+                                    `).join('')}
+                                </ul>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Close</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Remove existing modal if any
+            const existingModal = document.getElementById('importWarningsModal');
+            if (existingModal) {
+                existingModal.remove();
+            }
+
+            // Add new modal to body
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+            // Show the modal
+            const warningsModal = new bootstrap.Modal(document.getElementById('importWarningsModal'));
+            warningsModal.show();
         }
 
         // CSV download function

@@ -303,33 +303,39 @@ def import_mapped_csv():
         systems_added = 0
         errors = []
         
-        for row_num, row in enumerate(csv_reader, start=1):
+        for row_num, row in enumerate(csv_reader, start=2):  # Start from 2 since row 1 is header
             try:
                 # Map fields according to provided mapping
                 system = {
                     'created_at': datetime.now(),
-                    'last_check': datetime.now(),
+                    'last_check': None,
                     'status': False
                 }
 
+                # Map fields from CSV
                 for field, csv_header in mapping.items():
                     if csv_header in row:
-                        value = row[csv_header].strip()
-                        if field == 'cluster_nodes' and value:
-                            system[field] = [node.strip() for node in value.split(',') if node.strip()]
-                        else:
-                            system[field] = value
+                        value = row[csv_header].strip() if row[csv_header] else None
+                        if value:  # Only set if value is not empty
+                            if field == 'cluster_nodes':
+                                system[field] = [node.strip() for node in value.split(',') if node.strip()]
+                            elif field == 'mount_points':
+                                system[field] = [point.strip() for point in value.split(',') if point.strip()]
+                            elif field == 'shutdown_sequence':
+                                system[field] = [step.strip() for step in value.split(',') if step.strip()]
+                            else:
+                                system[field] = value
 
                 # Validate required fields
-                if not system.get('name') or not system.get('app_name'):
-                    errors.append(f"Row {row_num}: System Name and Application Name are required")
+                if not system.get('name'):
+                    errors.append(f"Row {row_num}: Server Name is required")
                     continue
 
-                # Handle check type
-                if system.get('check_type'):
+                # Set default check type if not provided
+                if not system.get('check_type'):
+                    system['check_type'] = 'ping'
+                else:
                     system['check_type'] = system['check_type'].lower()
-                    if system['check_type'] not in ['http', 'ping']:
-                        system['check_type'] = 'http'
 
                 # Handle target for cluster systems
                 if not system.get('target') and system.get('cluster_nodes'):
@@ -340,6 +346,7 @@ def import_mapped_csv():
                     errors.append(f"Row {row_num}: Target URL/IP is required for non-cluster systems")
                     continue
 
+                # Insert the system
                 mongo.db.systems.insert_one(system)
                 systems_added += 1
 
