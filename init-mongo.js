@@ -1,7 +1,3 @@
-// Switch to admin database first to authenticate
-db = db.getSiblingDB('admin');
-db.auth('root', 'rootpassword');
-
 // Switch to app database
 db = db.getSiblingDB('app_monitor');
 
@@ -10,16 +6,6 @@ db.createCollection('systems');
 
 // Create indexes
 db.systems.createIndex({ "name": 1 }, { unique: true });
-
-// Create user if it doesn't exist
-db.createUser({
-    user: "app_user",
-    pwd: "app_password",
-    roles: [
-        { role: "readWrite", db: "app_monitor" },
-        { role: "dbAdmin", db: "app_monitor" }
-    ]
-});
 
 // Insert some initial test data
 const initialSystems = [

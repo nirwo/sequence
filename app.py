@@ -20,35 +20,9 @@ import sys
 
 app = Flask(__name__, static_url_path='/static', static_folder='static')
 
-# MongoDB configuration with retry and timeout settings
+# MongoDB configuration
 app.config["MONGO_URI"] = os.getenv("MONGO_URI", "mongodb://localhost:27017/app_monitor")
-app.config["MONGO_CONNECT_TIMEOUT_MS"] = 5000
-app.config["MONGO_SOCKET_TIMEOUT_MS"] = 5000
-app.config["MONGO_SERVER_SELECTION_TIMEOUT_MS"] = 5000
-
-# Initialize MongoDB with retries
-def init_mongo():
-    retry_count = 0
-    max_retries = 3
-    while retry_count < max_retries:
-        try:
-            mongo = PyMongo(app)
-            # Test the connection
-            mongo.db.command('ping')
-            print("Successfully connected to MongoDB")
-            return mongo
-        except Exception as e:
-            retry_count += 1
-            print(f"Failed to connect to MongoDB (attempt {retry_count}/{max_retries}): {str(e)}")
-            if retry_count == max_retries:
-                raise
-            time.sleep(2)
-
-try:
-    mongo = init_mongo()
-except Exception as e:
-    print(f"Fatal: Could not connect to MongoDB: {str(e)}")
-    sys.exit(1)
+mongo = PyMongo(app)
 
 def parse_json(data):
     return json.loads(json_util.dumps(data))
