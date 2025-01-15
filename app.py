@@ -30,10 +30,43 @@ def index():
 def get_systems():
     try:
         systems = list(mongo.db.systems.find())
-        return Response(
-            json_util.dumps({'systems': systems}),
-            mimetype='application/json'
-        )
+        for system in systems:
+            # Convert ObjectId to string for JSON serialization
+            system['_id'] = str(system['_id'])
+            
+            # Ensure all required fields have default values
+            system.setdefault('status', False)
+            system.setdefault('db_status', None)
+            system.setdefault('http_status', None)
+            system.setdefault('http_error', None)
+            system.setdefault('ping_status', None)
+            system.setdefault('ping_error', None)
+            system.setdefault('last_error', None)
+            system.setdefault('sequence_status', 'not_started')
+            
+            # Convert datetime objects to ISO format strings
+            if 'created_at' in system:
+                system['created_at'] = system['created_at'].isoformat()
+            if 'last_check' in system:
+                system['last_check'] = system['last_check'].isoformat() if system['last_check'] else None
+
+            # Handle cluster nodes
+            if 'cluster_nodes' in system and system['cluster_nodes']:
+                for node in system['cluster_nodes']:
+                    if isinstance(node, dict):
+                        if 'last_check' in node:
+                            node['last_check'] = node['last_check'].isoformat() if node['last_check'] else None
+                        node.setdefault('status', False)
+                        node.setdefault('http_status', None)
+                        node.setdefault('http_error', None)
+                        node.setdefault('ping_status', None)
+                        node.setdefault('ping_error', None)
+                    else:
+                        # Convert string node to dict format
+                        system['cluster_nodes'] = [{'host': n, 'status': False} for n in system['cluster_nodes']]
+                        break
+
+        return jsonify({'systems': systems})
     except Exception as e:
         print(f"Error fetching systems: {str(e)}")
         return jsonify({"error": str(e)}), 500
@@ -529,6 +562,212 @@ def download_example_csv():
     except Exception as e:
         return jsonify({"error": f"Error generating example CSV: {str(e)}"}), 500
 
+@app.route('/api/systems/check/<system_id>')
+def check_system(system_id):
+    try:
+        system = mongo.db.systems.find_one({'_id': ObjectId(system_id)})
+        if not system:
+            return jsonify({'error': 'System not found'}), 404
+
+        results = test_system(system)
+        
+        # Update system status and last check time
+        update_data = {
+            'status': results['status'],
+            'last_check': datetime.now(),
+            'db_status': results['db_status'],
+            'http_status': results['http_status'],
+            'http_error': results['http_error'],
+            'ping_status': results['ping_status'],
+            'ping_error': results['ping_error'],
+            'last_error': '; '.join(results['errors']) if results['errors'] else None
+        }
+        
+        # Update cluster nodes if present
+        if results.get('cluster_nodes'):
+            update_data['cluster_nodes'] = results['cluster_nodes']
+        
+        mongo.db.systems.update_one(
+            {'_id': ObjectId(system_id)},
+            {'$set': update_data}
+        )
+
+        return jsonify(results)
+    except Exception as e:
+        print(f"Error checking system: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+def test_system(system):
+    results = {
+        'status': False,
+        'errors': [],
+        'db_status': None,
+        'http_status': None,
+        'http_error': None,
+        'ping_status': None,
+        'ping_error': None
+    }
+    
+    # Test main target
+    if system.get('target'):
+        if system.get('check_type') in ['http', 'both']:
+            try:
+                http_status = test_http(system['target'])
+                results['http_status'] = http_status
+                if not http_status:
+                    error_msg = f"HTTP check failed for {system['target']}"
+                    results['http_error'] = error_msg
+                    results['errors'].append(error_msg)
+            except Exception as e:
+                error_msg = f"HTTP error for {system['target']}: {str(e)}"
+                results['http_error'] = error_msg
+                results['errors'].append(error_msg)
+                
+        if system.get('check_type') in ['ping', 'both']:
+            try:
+                ping_status, message = test_ping(system['target'])
+                results['ping_status'] = ping_status
+                if not ping_status:
+                    results['ping_error'] = message
+                    results['errors'].append(message)
+            except Exception as e:
+                error_msg = f"Ping error for {system['target']}: {str(e)}"
+                results['ping_error'] = error_msg
+                results['errors'].append(error_msg)
+    
+    # Test cluster nodes
+    if system.get('cluster_nodes'):
+        updated_nodes = []
+        nodes = system['cluster_nodes']
+        if isinstance(nodes, list):
+            for node in nodes:
+                node_host = node['host'] if isinstance(node, dict) else node
+                node_result = {
+                    'host': node_host,
+                    'status': False,
+                    'last_check': datetime.now(),
+                    'http_status': None,
+                    'http_error': None,
+                    'ping_status': None,
+                    'ping_error': None
+                }
+                
+                # Test ping
+                try:
+                    ping_status, message = test_ping(node_host)
+                    node_result['ping_status'] = ping_status
+                    node_result['status'] = ping_status
+                    if not ping_status:
+                        node_result['ping_error'] = message
+                        results['errors'].append(f"Node {node_host}: {message}")
+                except Exception as e:
+                    error_msg = f"Error checking node {node_host}: {str(e)}"
+                    node_result['ping_error'] = error_msg
+                    results['errors'].append(error_msg)
+                    
+                # Test HTTP if main system is HTTP
+                if system.get('check_type') in ['http', 'both']:
+                    try:
+                        http_status = test_http(node_host)
+                        node_result['http_status'] = http_status
+                        if not http_status:
+                            error_msg = f"HTTP check failed for node {node_host}"
+                            node_result['http_error'] = error_msg
+                            results['errors'].append(error_msg)
+                    except Exception as e:
+                        error_msg = f"HTTP error for node {node_host}: {str(e)}"
+                        node_result['http_error'] = error_msg
+                        results['errors'].append(error_msg)
+                
+                updated_nodes.append(node_result)
+            results['cluster_nodes'] = updated_nodes
+    
+    # Test database connection if db_port is specified
+    if system.get('db_port'):
+        try:
+            db_host = system.get('target')  # Use main target for DB
+            db_status, db_message = test_db_connection(db_host, system['db_port'])
+            results['db_status'] = db_status
+            if not db_status:
+                results['errors'].append(db_message)
+        except Exception as e:
+            results['errors'].append(f"Database connection error: {str(e)}")
+            results['db_status'] = False
+    
+    # Update overall status - system is online if any test passes
+    results['status'] = (
+        (results['http_status'] is True) or 
+        (results['ping_status'] is True) or 
+        (results.get('cluster_nodes') and any(node['status'] for node in results['cluster_nodes']))
+    )
+    
+    return results
+
+@app.route('/api/systems/sequence/<system_id>', methods=['POST'])
+def update_sequence_status(system_id):
+    try:
+        status = request.json.get('status')
+        if status not in ['not_started', 'in_progress', 'completed']:
+            return jsonify({'error': 'Invalid status'}), 400
+            
+        result = mongo.db.systems.update_one(
+            {'_id': ObjectId(system_id)},
+            {'$set': {'sequence_status': status}}
+        )
+        
+        if result.modified_count == 0:
+            return jsonify({'error': 'System not found'}), 404
+            
+        return jsonify({'message': 'Status updated successfully'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/systems/summary')
+def get_systems_summary():
+    try:
+        pipeline = [
+            {
+                '$group': {
+                    '_id': None,
+                    'total': {'$sum': 1},
+                    'online': {'$sum': {'$cond': ['$status', 1, 0]}},
+                    'offline': {'$sum': {'$cond': ['$status', 0, 1]}},
+                    'sequence_not_started': {'$sum': {'$cond': [{'$eq': ['$sequence_status', 'not_started']}, 1, 0]}},
+                    'sequence_in_progress': {'$sum': {'$cond': [{'$eq': ['$sequence_status', 'in_progress']}, 1, 0]}},
+                    'sequence_completed': {'$sum': {'$cond': [{'$eq': ['$sequence_status', 'completed']}, 1, 0]}},
+                    'db_online': {'$sum': {'$cond': ['$db_status', 1, 0]}},
+                    'db_offline': {'$sum': {'$cond': [{'$and': [{'$ne': ['$db_status', null]}, {'$eq': ['$db_status', false]}]}, 1, 0]}},
+                }
+            }
+        ]
+        
+        summary = list(mongo.db.systems.aggregate(pipeline))
+        return jsonify(summary[0] if summary else {
+            'total': 0,
+            'online': 0,
+            'offline': 0,
+            'sequence_not_started': 0,
+            'sequence_in_progress': 0,
+            'sequence_completed': 0,
+            'db_online': 0,
+            'db_offline': 0
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/systems/check_all')
+def check_all_systems():
+    try:
+        systems = list(mongo.db.systems.find())
+        results = []
+        
+        for system in systems:
+            results.append(test_system(system))
+        
+        return jsonify(results)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 def test_http(url):
     try:
         # Add http:// if no protocol specified
@@ -635,208 +874,6 @@ def test_db_connection(host, port):
             return False, f"Port {port} is closed on {host}"
     except Exception as e:
         return False, f"Error checking port {port} on {host}: {str(e)}"
-
-def test_system(system):
-    results = {
-        'status': False,
-        'errors': [],
-        'db_status': None,
-        'http_status': None,
-        'http_error': None,
-        'ping_status': None,
-        'ping_error': None
-    }
-    
-    # Test main target
-    if system.get('target'):
-        if system.get('check_type') in ['http', 'both']:
-            try:
-                http_status = test_http(system['target'])
-                results['http_status'] = http_status
-                if not http_status:
-                    error_msg = f"HTTP check failed for {system['target']}"
-                    results['http_error'] = error_msg
-                    results['errors'].append(error_msg)
-            except Exception as e:
-                error_msg = f"HTTP error for {system['target']}: {str(e)}"
-                results['http_error'] = error_msg
-                results['errors'].append(error_msg)
-                
-        if system.get('check_type') in ['ping', 'both']:
-            try:
-                ping_status, message = test_ping(system['target'])
-                results['ping_status'] = ping_status
-                if not ping_status:
-                    results['ping_error'] = message
-                    results['errors'].append(message)
-            except Exception as e:
-                error_msg = f"Ping error for {system['target']}: {str(e)}"
-                results['ping_error'] = error_msg
-                results['errors'].append(error_msg)
-    
-    # Test cluster nodes
-    if system.get('cluster_nodes'):
-        updated_nodes = []
-        for node in system['cluster_nodes']:
-            node_result = {
-                'host': node['host'],
-                'status': False,
-                'last_check': datetime.now(),
-                'http_status': None,
-                'http_error': None,
-                'ping_status': None,
-                'ping_error': None
-            }
-            
-            # Test ping
-            try:
-                ping_status, message = test_ping(node['host'])
-                node_result['ping_status'] = ping_status
-                node_result['status'] = ping_status
-                if not ping_status:
-                    node_result['ping_error'] = message
-                    results['errors'].append(f"Node {node['host']}: {message}")
-            except Exception as e:
-                error_msg = f"Error checking node {node['host']}: {str(e)}"
-                node_result['ping_error'] = error_msg
-                results['errors'].append(error_msg)
-                
-            # Test HTTP if main system is HTTP
-            if system.get('check_type') in ['http', 'both']:
-                try:
-                    http_status = test_http(node['host'])
-                    node_result['http_status'] = http_status
-                    if not http_status:
-                        error_msg = f"HTTP check failed for node {node['host']}"
-                        node_result['http_error'] = error_msg
-                        results['errors'].append(error_msg)
-                except Exception as e:
-                    error_msg = f"HTTP error for node {node['host']}: {str(e)}"
-                    node_result['http_error'] = error_msg
-                    results['errors'].append(error_msg)
-            
-            updated_nodes.append(node_result)
-        results['cluster_nodes'] = updated_nodes
-    
-    # Test database connection if db_port is specified
-    if system.get('db_port'):
-        try:
-            db_host = system.get('target')  # Use main target for DB
-            db_status, db_message = test_db_connection(db_host, system['db_port'])
-            results['db_status'] = db_status
-            if not db_status:
-                results['errors'].append(db_message)
-        except Exception as e:
-            results['errors'].append(f"Database connection error: {str(e)}")
-            results['db_status'] = False
-    
-    # Update overall status - system is online if any test passes
-    results['status'] = (
-        (results['http_status'] is True) or 
-        (results['ping_status'] is True) or 
-        (results.get('cluster_nodes') and any(node['status'] for node in results['cluster_nodes']))
-    )
-    
-    return results
-
-@app.route('/api/systems/check/<system_id>')
-def check_system(system_id):
-    try:
-        system = mongo.db.systems.find_one({'_id': ObjectId(system_id)})
-        if not system:
-            return jsonify({'error': 'System not found'}), 404
-
-        results = test_system(system)
-        
-        # Update system status and last check time
-        update_data = {
-            'status': results['status'],
-            'last_check': datetime.now(),
-            'db_status': results['db_status'],
-            'http_status': results['http_status'],
-            'http_error': results['http_error'],
-            'ping_status': results['ping_status'],
-            'ping_error': results['ping_error'],
-            'last_error': '; '.join(results['errors']) if results['errors'] else None
-        }
-        
-        # Update cluster nodes if present
-        if results.get('cluster_nodes'):
-            update_data['cluster_nodes'] = results['cluster_nodes']
-        
-        mongo.db.systems.update_one(
-            {'_id': ObjectId(system_id)},
-            {'$set': update_data}
-        )
-
-        return jsonify(results)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/systems/sequence/<system_id>', methods=['POST'])
-def update_sequence_status(system_id):
-    try:
-        status = request.json.get('status')
-        if status not in ['not_started', 'in_progress', 'completed']:
-            return jsonify({'error': 'Invalid status'}), 400
-            
-        result = mongo.db.systems.update_one(
-            {'_id': ObjectId(system_id)},
-            {'$set': {'sequence_status': status}}
-        )
-        
-        if result.modified_count == 0:
-            return jsonify({'error': 'System not found'}), 404
-            
-        return jsonify({'message': 'Status updated successfully'})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/systems/summary')
-def get_systems_summary():
-    try:
-        pipeline = [
-            {
-                '$group': {
-                    '_id': None,
-                    'total': {'$sum': 1},
-                    'online': {'$sum': {'$cond': ['$status', 1, 0]}},
-                    'offline': {'$sum': {'$cond': ['$status', 0, 1]}},
-                    'sequence_not_started': {'$sum': {'$cond': [{'$eq': ['$sequence_status', 'not_started']}, 1, 0]}},
-                    'sequence_in_progress': {'$sum': {'$cond': [{'$eq': ['$sequence_status', 'in_progress']}, 1, 0]}},
-                    'sequence_completed': {'$sum': {'$cond': [{'$eq': ['$sequence_status', 'completed']}, 1, 0]}},
-                    'db_online': {'$sum': {'$cond': ['$db_status', 1, 0]}},
-                    'db_offline': {'$sum': {'$cond': [{'$and': [{'$ne': ['$db_status', null]}, {'$eq': ['$db_status', false]}]}, 1, 0]}},
-                }
-            }
-        ]
-        
-        summary = list(mongo.db.systems.aggregate(pipeline))
-        return jsonify(summary[0] if summary else {
-            'total': 0,
-            'online': 0,
-            'offline': 0,
-            'sequence_not_started': 0,
-            'sequence_in_progress': 0,
-            'sequence_completed': 0,
-            'db_online': 0,
-            'db_offline': 0
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/systems/check_all')
-def check_all_systems():
-    try:
-        systems = list(mongo.db.systems.find())
-        results = []
-        
-        for system in systems:
-            results.append(test_system(system))
-        
-        return jsonify(results)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     status_thread = threading.Thread(target=update_status)
