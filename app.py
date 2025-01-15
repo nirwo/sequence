@@ -27,7 +27,7 @@ def get_systems():
     try:
         systems = list(mongo.db.systems.find())
         return Response(
-            json_util.dumps(systems),
+            json_util.dumps({'systems': systems}),
             mimetype='application/json'
         )
     except Exception as e:
@@ -54,7 +54,10 @@ def add_system():
             return jsonify({"error": "Target URL/IP is required"}), 400
             
         result = mongo.db.systems.insert_one(system)
-        return jsonify({"message": "System added successfully", "id": str(result.inserted_id)})
+        return jsonify({
+            "message": "System added successfully",
+            "id": str(result.inserted_id)
+        })
     except Exception as e:
         print(f"Error adding system: {str(e)}")
         return jsonify({"error": str(e)}), 500

@@ -87,7 +87,7 @@
         <div class="card">
             <div class="card-body">
                 <div class="table-responsive">
-                    <table class="table table-hover">
+                    <table class="table table-hover" id="systemsTable">
                         <thead>
                             <tr>
                                 <th style="width: 50px">Status</th>
@@ -101,7 +101,7 @@
                                 <th style="width: 120px">Actions</th>
                             </tr>
                         </thead>
-                        <tbody id="systems-container">
+                        <tbody>
                         </tbody>
                     </table>
                 </div>
@@ -355,61 +355,68 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         let systems = [];
-        let currentStep = 1;
-        const totalSteps = 4;
 
-        function fetchSystems() {
-            fetch('/api/systems')
-                .then(response => response.json())
-                .then(data => {
-                    systems = data;
-                    updateSystemsDisplay();
-                });
+        async function fetchSystems() {
+            try {
+                const response = await fetch('/api/systems');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                systems = data.systems || [];
+                updateSystemsTable();
+            } catch (error) {
+                showToast('Error fetching systems: ' + error.message, 'error');
+            }
         }
 
-        function updateSystemsDisplay() {
-            const container = document.getElementById('systems-container');
-            container.innerHTML = '';
-            
+        function updateSystemsTable() {
+            const tbody = document.querySelector('#systemsTable tbody');
+            tbody.innerHTML = '';
+
+            if (systems.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="9" class="text-center">No systems found</td>
+                    </tr>
+                `;
+                return;
+            }
+
             systems.forEach(system => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td>
-                        <span class="status-badge ${system.status ? 'status-up' : 'status-down'}"
-                              title="${system.status ? 'Online' : 'Offline'}"></span>
+                        <span class="status-indicator ${system.status ? 'active' : 'inactive'}"
+                              title="${system.status ? 'Online' : 'Offline'}">
+                        </span>
                     </td>
+                    <td>${system.name || ''}</td>
+                    <td>${system.app_name || ''}</td>
+                    <td>${system.check_type || ''}</td>
+                    <td>${system.target || ''}</td>
+                    <td>${system.db_name || ''}</td>
+                    <td>${system.owner || ''}</td>
+                    <td>${system.last_check ? new Date(system.last_check).toLocaleString() : ''}</td>
                     <td>
-                        <strong>${system.name}</strong>
-                        ${system.cluster_nodes ? 
-                            `<div class="cluster-nodes">Cluster: ${system.cluster_nodes.join(', ')}</div>` 
-                            : ''}
-                    </td>
-                    <td>${system.app_name}</td>
-                    <td>${system.check_type || '-'}</td>
-                    <td>${system.target || '-'}</td>
-                    <td>${system.db_name ? `${system.db_name} (${system.db_type || 'Unknown'})` : '-'}</td>
-                    <td>${system.owner || '-'}</td>
-                    <td><small>${new Date(system.last_check).toLocaleString()}</small></td>
-                    <td class="system-actions">
-                        <button class="btn btn-sm btn-primary" onclick="editSystem('${system._id}')" title="Edit">
-                            <i class="fas fa-edit"></i>
-                        </button>
-                        <button class="btn btn-sm btn-info" onclick="showShutdownSequence('${system._id}')" title="Shutdown Sequence">
-                            <i class="fas fa-power-off"></i>
-                        </button>
-                        <button class="btn btn-sm btn-danger" onclick="deleteSystem('${system._id}')" title="Delete">
-                            <i class="fas fa-trash"></i>
-                        </button>
+                        <div class="btn-group">
+                            <button class="btn btn-sm btn-outline-primary" onclick="editSystem('${system._id}')" title="Edit">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteSystem('${system._id}')" title="Delete">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
                     </td>
                 `;
-                container.appendChild(row);
+                tbody.appendChild(row);
             });
         }
 
         function editSystem(systemId) {
             const system = systems.find(s => s._id === systemId);
             if (!system) {
-                console.error('System not found:', systemId);
+                showToast('System not found', 'error');
                 return;
             }
 
@@ -441,178 +448,29 @@
             new bootstrap.Modal(document.getElementById('editModal')).show();
         }
 
-        async function saveEditedSystem(event) {
-            event.preventDefault();
-            const form = document.getElementById('editSystemForm');
-            const systemId = form.dataset.systemId;
-            
-            if (!systemId) {
-                showToast('System ID not found', 'error');
-                return;
-            }
-
-            const formData = {
-                name: form.querySelector('[name="name"]').value.trim(),
-                app_name: form.querySelector('[name="app_name"]').value.trim(),
-                check_type: form.querySelector('[name="check_type"]').value,
-                target: form.querySelector('[name="target"]').value.trim(),
-                db_name: form.querySelector('[name="db_name"]').value.trim(),
-                db_type: form.querySelector('[name="db_type"]').value.trim(),
-                mount_points: form.querySelector('[name="mount_points"]').value.trim(),
-                owner: form.querySelector('[name="owner"]').value.trim(),
-                shutdown_sequence: form.querySelector('[name="shutdown_sequence"]').value.trim(),
-                cluster_nodes: form.querySelector('[name="cluster_nodes"]').value.trim()
-            };
-
-            if (!formData.name || !formData.app_name) {
-                showToast('System Name and Application Name are required', 'error');
+        async function deleteSystem(systemId) {
+            if (!confirm('Are you sure you want to delete this system?')) {
                 return;
             }
 
             try {
                 const response = await fetch(`/api/systems/${systemId}`, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(formData)
+                    method: 'DELETE'
                 });
                 
                 const data = await response.json();
                 if (data.error) {
                     showToast(data.error, 'error');
                 } else {
-                    showToast('System updated successfully', 'success');
-                    bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
+                    showToast('System deleted successfully', 'success');
                     await fetchSystems();
                 }
             } catch (error) {
-                showToast('Error updating system: ' + error.message, 'error');
+                showToast('Error deleting system: ' + error.message, 'error');
             }
         }
 
-        function showShutdownSequence(systemId) {
-            const system = systems.find(s => s._id === systemId);
-            if (system.shutdown_sequence) {
-                alert(`Shutdown Sequence for ${system.name}:\n\n${system.shutdown_sequence}`);
-            } else {
-                alert(`No shutdown sequence defined for ${system.name}`);
-            }
-        }
-
-        function updateProgressBar() {
-            const progress = ((currentStep - 1) / (totalSteps - 1)) * 100;
-            document.querySelector('.progress-bar').style.width = `${progress}%`;
-            
-            // Update step indicators
-            document.querySelectorAll('.step-indicator').forEach((indicator, index) => {
-                if (index + 1 < currentStep) {
-                    indicator.classList.add('completed');
-                } else if (index + 1 === currentStep) {
-                    indicator.classList.add('active');
-                } else {
-                    indicator.classList.remove('active', 'completed');
-                }
-            });
-        }
-
-        function showStep(step) {
-            document.querySelectorAll('.wizard-step').forEach(s => {
-                if (parseInt(s.dataset.step) === step) {
-                    s.classList.remove('d-none');
-                } else {
-                    s.classList.add('d-none');
-                }
-            });
-
-            const footer = document.querySelector('.modal-footer');
-            const prevBtn = footer.querySelector('button:first-child');
-            const nextBtn = footer.querySelector('button:last-child');
-
-            prevBtn.style.display = step === 1 ? 'none' : 'block';
-            nextBtn.textContent = step === totalSteps ? 'Submit' : 'Next';
-        }
-
-        function nextStep() {
-            if (currentStep < totalSteps) {
-                currentStep++;
-                showStep(currentStep);
-                updateProgressBar();
-            } else {
-                submitWizardForm();
-            }
-        }
-
-        function previousStep() {
-            if (currentStep > 1) {
-                currentStep--;
-                showStep(currentStep);
-                updateProgressBar();
-            }
-        }
-
-        function toggleClusterView() {
-            const isCluster = document.querySelector('input[name="is_cluster"]:checked').value === 'yes';
-            document.getElementById('singleServerForm').classList.toggle('d-none', isCluster);
-            document.getElementById('clusterForm').classList.toggle('d-none', !isCluster);
-        }
-
-        function toggleDBView() {
-            const hasDB = document.querySelector('input[name="has_db"]:checked').value === 'yes';
-            document.getElementById('dbForm').classList.toggle('d-none', !hasDB);
-        }
-
-        function addClusterNode() {
-            const container = document.getElementById('clusterNodes');
-            const nodeTemplate = container.querySelector('.cluster-node').cloneNode(true);
-            container.appendChild(nodeTemplate);
-        }
-
-        function submitWizardForm() {
-            const form = document.getElementById('wizardForm');
-            const formData = new FormData(form);
-            const data = {};
-
-            formData.forEach((value, key) => {
-                if (key.endsWith('[]')) {
-                    const baseKey = key.slice(0, -2);
-                    if (!data[baseKey]) {
-                        data[baseKey] = [];
-                    }
-                    data[baseKey].push(value);
-                } else {
-                    data[key] = value;
-                }
-            });
-
-            // Handle cluster nodes
-            if (data.is_cluster === 'yes') {
-                data.name = `${data.app_name} Cluster`;
-                data.cluster_info = data.cluster_nodes.map((node, index) => ({
-                    name: node,
-                    target: data.cluster_targets[index]
-                }));
-            }
-
-            fetch('/api/systems', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(data)
-            })
-            .then(response => response.json())
-            .then(() => {
-                fetchSystems();
-                bootstrap.Modal.getInstance(document.getElementById('wizardModal')).hide();
-                form.reset();
-                currentStep = 1;
-                showStep(1);
-                updateProgressBar();
-            });
-        }
-
-        function importCSV(input) {
+        async function importCSV(input) {
             if (!input.files.length) return;
             
             const formData = new FormData();
@@ -629,135 +487,34 @@
                     showToast(data.error, 'error');
                 } else {
                     showToast(`Successfully imported ${data.systems_added} systems`, 'success');
+                    if (data.warnings) {
+                        data.warnings.forEach(warning => {
+                            showToast(warning, 'info', 8000);
+                        });
+                    }
                     await fetchSystems();
                 }
             } catch (error) {
                 showToast('Error importing CSV file: ' + error.message, 'error');
-            }
-            
-            // Clear the input
-            input.value = '';
-        }
-
-        function openCSVMapping() {
-            document.getElementById('csvMappingFile').value = '';
-            document.getElementById('csvPreview').classList.add('d-none');
-            document.getElementById('fieldMapping').innerHTML = '';
-            new bootstrap.Modal(document.getElementById('csvMappingModal')).show();
-        }
-
-        function previewCSV(input) {
-            const file = input.files[0];
-            if (!file) return;
-
-            const formData = new FormData();
-            formData.append('file', file);
-
-            fetch('/api/csv/preview', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.error) {
-                    showToast(data.error, 'error');
-                    return;
-                }
-
-                // Show preview
-                const previewDiv = document.getElementById('csvPreview');
-                previewDiv.classList.remove('d-none');
-
-                // Set up header
-                const headerRow = '<tr>' + data.headers.map(h => `<th>${h}</th>`).join('') + '</tr>';
-                document.getElementById('csvPreviewHeader').innerHTML = headerRow;
-
-                // Set up preview rows
-                const previewRows = data.preview_rows.map(row => 
-                    '<tr>' + row.map(cell => `<td>${cell}</td>`).join('') + '</tr>'
-                ).join('');
-                document.getElementById('csvPreviewBody').innerHTML = previewRows;
-
-                // Set up field mapping
-                const mappingDiv = document.getElementById('fieldMapping');
-                mappingDiv.innerHTML = data.available_fields.map(field => `
-                    <div class="col-md-6">
-                        <div class="form-group">
-                            <label class="form-label">${field.label}</label>
-                            <select class="form-select" data-field="${field.id}">
-                                <option value="">-- Skip Field --</option>
-                                ${data.headers.map(h => `<option value="${h}">${h}</option>`).join('')}
-                            </select>
-                        </div>
-                    </div>
-                `).join('');
-
-                // Auto-map fields with matching names
-                data.available_fields.forEach(field => {
-                    const select = mappingDiv.querySelector(`select[data-field="${field.id}"]`);
-                    const matchingHeader = data.headers.find(h => 
-                        h.toLowerCase().replace(/[^a-z0-9]/g, '') === 
-                        field.label.toLowerCase().replace(/[^a-z0-9]/g, '')
-                    );
-                    if (matchingHeader) {
-                        select.value = matchingHeader;
-                    }
-                });
-            })
-            .catch(error => {
-                showToast('Error previewing CSV file', 'error');
-            });
-        }
-
-        function importMappedCSV() {
-            const file = document.getElementById('csvMappingFile').files[0];
-            if (!file) {
-                showToast('Please select a CSV file', 'error');
-                return;
-            }
-
-            // Get mapping
-            const mapping = {};
-            document.querySelectorAll('#fieldMapping select').forEach(select => {
-                if (select.value) {
-                    mapping[select.dataset.field] = select.value;
-                }
-            });
-
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('mapping', JSON.stringify(mapping));
-
-            fetch('/api/csv/import', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.error) {
-                    showToast(data.error, 'error');
-                } else {
-                    showToast(data.message, 'success');
-                    bootstrap.Modal.getInstance(document.getElementById('csvMappingModal')).hide();
-                    await fetchSystems();
-                }
-            })
-            .catch(error => {
-                showToast('Error importing CSV file: ' + error.message, 'error');
-            });
-        }
-
-        function deleteSystem(systemId) {
-            if (confirm('Are you sure you want to delete this system?')) {
-                fetch(`/api/systems/${systemId}`, {
-                    method: 'DELETE'
-                })
-                .then(response => response.json())
-                .then(() => {
-                    fetchSystems();
-                });
+            } finally {
+                input.value = '';
             }
         }
+
+        // Add event listeners when the document is ready
+        document.addEventListener('DOMContentLoaded', () => {
+            // Edit form submit handler
+            document.getElementById('editSystemForm').addEventListener('submit', async (event) => {
+                event.preventDefault();
+                await saveEditedSystem(event);
+            });
+
+            // Initial load
+            fetchSystems();
+
+            // Setup refresh interval
+            setInterval(fetchSystems, 60000); // Refresh every minute
+        });
 
         // Toast notification system
         function showToast(message, type = 'info', duration = 5000) {
@@ -779,9 +536,6 @@
                 toast.remove();
             }, duration);
         }
-
-        // Initial load
-        fetchSystems();
     </script>
 </body>
 </html>
