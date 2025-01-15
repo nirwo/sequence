@@ -715,146 +715,120 @@ def download_example_csv():
     except Exception as e:
         return jsonify({"error": f"Error generating example CSV: {str(e)}"}), 500
 
-@app.route('/api/systems/check/<system_id>')
-def check_system(system_id):
+@app.route('/api/systems/test/<system_id>', methods=['POST'])
+def test_system(system_id):
     try:
         system = mongo.db.systems.find_one({'_id': ObjectId(system_id)})
         if not system:
             return jsonify({'error': 'System not found'}), 404
 
-        results = test_system(system)
-        
-        # Update system status and last check time
-        update_data = {
-            'status': results['status'],
-            'last_check': datetime.now(),
-            'db_status': results['db_status'],
-            'http_status': results['http_status'],
-            'http_error': results['http_error'],
-            'ping_status': results['ping_status'],
-            'ping_error': results['ping_error'],
-            'last_error': '; '.join(results['errors']) if results['errors'] else None
+        results = {
+            'system_id': str(system['_id']),
+            'name': system['name'],
+            'status': False,
+            'messages': [],
+            'nodes': []
         }
+
+        # Test main system if target is provided
+        if system.get('target'):
+            if system['check_type'] in ['http', 'both']:
+                http_status = test_http(system['target'])
+                results['messages'].append({
+                    'type': 'http',
+                    'status': http_status['success'],
+                    'message': http_status['message']
+                })
+                system['http_status'] = http_status['success']
+                system['http_error'] = http_status['message'] if not http_status['success'] else ""
+
+            if system['check_type'] in ['ping', 'both']:
+                ping_status = test_ping(system['target'])
+                results['messages'].append({
+                    'type': 'ping',
+                    'status': ping_status['success'],
+                    'message': ping_status['message']
+                })
+                system['ping_status'] = ping_status['success']
+                system['ping_error'] = ping_status['message'] if not ping_status['success'] else ""
+
+            # Test database if configured
+            if system.get('db_type') != 'N/A' and system.get('db_port'):
+                db_status = test_db_connection(system['target'], system['db_port'])
+                results['messages'].append({
+                    'type': 'database',
+                    'status': db_status['success'],
+                    'message': db_status['message']
+                })
+                system['db_status'] = db_status['success']
+
+        # Test cluster nodes if present
+        if system.get('cluster_nodes'):
+            for node in system['cluster_nodes']:
+                node_result = {
+                    'host': node['host'],
+                    'status': False,
+                    'messages': []
+                }
+
+                # Test HTTP if applicable
+                if system['check_type'] in ['http', 'both']:
+                    http_status = test_http(node['host'])
+                    node_result['messages'].append({
+                        'type': 'http',
+                        'status': http_status['success'],
+                        'message': http_status['message']
+                    })
+                    node['http_status'] = http_status['success']
+                    node['http_error'] = http_status['message'] if not http_status['success'] else ""
+
+                # Test Ping if applicable
+                if system['check_type'] in ['ping', 'both']:
+                    ping_status = test_ping(node['host'])
+                    node_result['messages'].append({
+                        'type': 'ping',
+                        'status': ping_status['success'],
+                        'message': ping_status['message']
+                    })
+                    node['ping_status'] = ping_status['success']
+                    node['ping_error'] = ping_status['message'] if not ping_status['success'] else ""
+
+                # Update node status
+                node_result['status'] = any(msg['status'] for msg in node_result['messages'])
+                node['status'] = node_result['status']
+                node['last_check'] = datetime.now()
+                results['nodes'].append(node_result)
+
+        # Update overall system status
+        main_system_status = False
+        if system.get('target'):
+            if system['check_type'] == 'both':
+                main_system_status = system['http_status'] and system['ping_status']
+            elif system['check_type'] == 'http':
+                main_system_status = system['http_status']
+            else:
+                main_system_status = system['ping_status']
         
-        # Update cluster nodes if present
-        if results.get('cluster_nodes'):
-            update_data['cluster_nodes'] = results['cluster_nodes']
-        
+        # For cluster systems, consider node statuses
+        if system.get('cluster_nodes'):
+            cluster_status = any(node['status'] for node in system['cluster_nodes'])
+            main_system_status = main_system_status or cluster_status
+
+        system['status'] = main_system_status
+        system['last_check'] = datetime.now()
+
+        # Update system in database
         mongo.db.systems.update_one(
             {'_id': ObjectId(system_id)},
-            {'$set': update_data}
+            {'$set': system}
         )
 
+        results['status'] = main_system_status
         return jsonify(results)
-    except Exception as e:
-        print(f"Error checking system: {str(e)}")
-        return jsonify({'error': str(e)}), 500
 
-def test_system(system):
-    results = {
-        'status': False,
-        'errors': [],
-        'db_status': None,
-        'http_status': None,
-        'http_error': None,
-        'ping_status': None,
-        'ping_error': None
-    }
-    
-    # Test main target
-    if system.get('target'):
-        if system.get('check_type') in ['http', 'both']:
-            try:
-                http_status = test_http(system['target'])
-                results['http_status'] = http_status
-                if not http_status:
-                    error_msg = f"HTTP check failed for {system['target']}"
-                    results['http_error'] = error_msg
-                    results['errors'].append(error_msg)
-            except Exception as e:
-                error_msg = f"HTTP error for {system['target']}: {str(e)}"
-                results['http_error'] = error_msg
-                results['errors'].append(error_msg)
-                
-        if system.get('check_type') in ['ping', 'both']:
-            try:
-                ping_status, message = test_ping(system['target'])
-                results['ping_status'] = ping_status
-                if not ping_status:
-                    results['ping_error'] = message
-                    results['errors'].append(message)
-            except Exception as e:
-                error_msg = f"Ping error for {system['target']}: {str(e)}"
-                results['ping_error'] = error_msg
-                results['errors'].append(error_msg)
-    
-    # Test cluster nodes
-    if system.get('cluster_nodes'):
-        updated_nodes = []
-        nodes = system['cluster_nodes']
-        if isinstance(nodes, list):
-            for node in nodes:
-                node_host = node['host'] if isinstance(node, dict) else node
-                node_result = {
-                    'host': node_host,
-                    'status': False,
-                    'last_check': datetime.now(),
-                    'http_status': None,
-                    'http_error': None,
-                    'ping_status': None,
-                    'ping_error': None
-                }
-                
-                # Test ping
-                try:
-                    ping_status, message = test_ping(node_host)
-                    node_result['ping_status'] = ping_status
-                    node_result['status'] = ping_status
-                    if not ping_status:
-                        node_result['ping_error'] = message
-                        results['errors'].append(f"Node {node_host}: {message}")
-                except Exception as e:
-                    error_msg = f"Error checking node {node_host}: {str(e)}"
-                    node_result['ping_error'] = error_msg
-                    results['errors'].append(error_msg)
-                    
-                # Test HTTP if main system is HTTP
-                if system.get('check_type') in ['http', 'both']:
-                    try:
-                        http_status = test_http(node_host)
-                        node_result['http_status'] = http_status
-                        if not http_status:
-                            error_msg = f"HTTP check failed for node {node_host}"
-                            node_result['http_error'] = error_msg
-                            results['errors'].append(error_msg)
-                    except Exception as e:
-                        error_msg = f"HTTP error for node {node_host}: {str(e)}"
-                        node_result['http_error'] = error_msg
-                        results['errors'].append(error_msg)
-                
-                updated_nodes.append(node_result)
-            results['cluster_nodes'] = updated_nodes
-    
-    # Test database connection if db_port is specified
-    if system.get('db_port'):
-        try:
-            db_host = system.get('target')  # Use main target for DB
-            db_status, db_message = test_db_connection(db_host, system['db_port'])
-            results['db_status'] = db_status
-            if not db_status:
-                results['errors'].append(db_message)
-        except Exception as e:
-            results['errors'].append(f"Database connection error: {str(e)}")
-            results['db_status'] = False
-    
-    # Update overall status - system is online if any test passes
-    results['status'] = (
-        (results['http_status'] is True) or 
-        (results['ping_status'] is True) or 
-        (results.get('cluster_nodes') and any(node['status'] for node in results['cluster_nodes']))
-    )
-    
-    return results
+    except Exception as e:
+        print(f"Error testing system: {str(e)}")
+        return jsonify({'error': f'Error testing system: {str(e)}'}), 500
 
 @app.route('/api/systems/sequence/<system_id>', methods=['POST'])
 def update_sequence_status(system_id):
@@ -995,7 +969,7 @@ def test_http(url):
             response = requests.get(url, timeout=10)
         
         # Consider any 2xx status code as success
-        return 200 <= response.status_code < 300
+        return {'success': 200 <= response.status_code < 300, 'message': response.text}
     except RequestException as e:
         print(f"HTTP test failed for {url}: {str(e)}")
         # If http:// failed, try https://
@@ -1004,13 +978,13 @@ def test_http(url):
                 https_url = f"https://{url[7:]}"
                 print(f"Retrying with HTTPS: {https_url}")
                 response = requests.get(https_url, timeout=10, verify=False)
-                return 200 <= response.status_code < 300
+                return {'success': 200 <= response.status_code < 300, 'message': response.text}
             except RequestException as e2:
                 print(f"HTTPS retry failed: {str(e2)}")
-        return False
+        return {'success': False, 'message': str(e)}
     except Exception as e:
         print(f"Unexpected error in HTTP test for {url}: {str(e)}")
-        return False
+        return {'success': False, 'message': str(e)}
 
 def test_ping(host):
     try:
@@ -1046,19 +1020,19 @@ def test_ping(host):
         if not success:
             # Check if we can get more specific error from output
             if "unknown host" in (stdout + stderr).lower():
-                return False, f"Unknown host: {host}"
+                return {'success': False, 'message': f"Unknown host: {host}"}
             elif "network is unreachable" in (stdout + stderr).lower():
-                return False, f"Network is unreachable for host: {host}"
+                return {'success': False, 'message': f"Network is unreachable for host: {host}"}
             elif "permission denied" in (stdout + stderr).lower():
-                return False, f"Permission denied when pinging {host}. Try running with sudo."
+                return {'success': False, 'message': f"Permission denied when pinging {host}. Try running with sudo."}
             else:
-                return False, f"Host {host} is not responding. {stderr if stderr else stdout}"
+                return {'success': False, 'message': f"Host {host} is not responding. {stderr if stderr else stdout}"}
             
-        return success, stdout if success else f"Host {host} is not responding. {stderr if stderr else ''}"
+        return {'success': success, 'message': stdout if success else f"Host {host} is not responding. {stderr if stderr else ''}"}
     except Exception as e:
         error_msg = f"Error pinging {host}: {str(e)}"
         print(error_msg)
-        return False, error_msg
+        return {'success': False, 'message': error_msg}
 
 def test_db_connection(host, port):
     try:
@@ -1073,7 +1047,7 @@ def test_db_connection(host, port):
         stdout, stderr = process.communicate()
         
         if "open" in stdout.lower():
-            return True, "Port is open"
+            return {'success': True, 'message': "Port is open"}
             
         # Fallback to telnet
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -1082,11 +1056,11 @@ def test_db_connection(host, port):
         sock.close()
         
         if result == 0:
-            return True, "Port is open"
+            return {'success': True, 'message': "Port is open"}
         else:
-            return False, f"Port {port} is closed on {host}"
+            return {'success': False, 'message': f"Port {port} is closed on {host}"}
     except Exception as e:
-        return False, f"Error checking port {port} on {host}: {str(e)}"
+        return {'success': False, 'message': f"Error checking port {port} on {host}: {str(e)}"}
 
 if __name__ == '__main__':
     status_thread = threading.Thread(target=update_status)
