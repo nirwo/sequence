@@ -115,6 +115,24 @@
         .not-started { background: #f0f0f0; }
         .in-progress { background: #fff3cd; }
         .completed { background: #d4edda; }
+        
+        .status-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .test-results {
+            margin-top: 10px;
+        }
+        
+        .test-result {
+            margin-bottom: 5px;
+        }
+        
+        .db-status {
+            margin-top: 10px;
+        }
     </style>
 </head>
 <body>
@@ -141,21 +159,19 @@
         <div class="card">
             <div class="card-body">
                 <div class="table-responsive">
-                    <table class="table table-hover" id="systemsTable">
+                    <table class="table table-striped" id="systemsTable">
                         <thead>
                             <tr>
-                                <th style="width: 50px">Status</th>
-                                <th>System Name</th>
-                                <th>Application</th>
-                                <th>Type</th>
-                                <th>Target</th>
-                                <th>Database</th>
-                                <th>Owner</th>
-                                <th>Last Check</th>
-                                <th style="width: 120px">Actions</th>
+                                <th onclick="sortTable(0)" style="cursor: pointer;">Name <i class="fas fa-sort"></i></th>
+                                <th onclick="sortTable(1)" style="cursor: pointer;">App Name <i class="fas fa-sort"></i></th>
+                                <th onclick="sortTable(2)" style="cursor: pointer;">Target <i class="fas fa-sort"></i></th>
+                                <th onclick="sortTable(3)" style="cursor: pointer;">DB Name <i class="fas fa-sort"></i></th>
+                                <th onclick="sortTable(4)" style="cursor: pointer;">Status <i class="fas fa-sort"></i></th>
+                                <th onclick="sortTable(5)" style="cursor: pointer;">Sequence <i class="fas fa-sort"></i></th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody id="systemsTableBody">
                         </tbody>
                     </table>
                 </div>
@@ -501,13 +517,13 @@
 
         // Update the systems table display
         function updateSystemsTable() {
-            const tbody = document.querySelector('#systemsTable tbody');
+            const tbody = document.getElementById('systemsTableBody');
             tbody.innerHTML = '';
 
             if (systems.length === 0) {
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="9" class="text-center">No systems found</td>
+                        <td colspan="8" class="text-center">No systems found</td>
                     </tr>
                 `;
                 return;
@@ -515,59 +531,7 @@
 
             systems.forEach(system => {
                 const systemId = system._id.$oid || system._id;
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td>
-                        <span class="status-indicator ${system.status ? 'active' : 'inactive'}"
-                              title="${system.status ? 'Online' : 'Offline'}"
-                              data-bs-toggle="tooltip">
-                            <i class="fas fa-circle"></i>
-                        </span>
-                    </td>
-                    <td>${system.name || ''}</td>
-                    <td>${system.app_name || '<span class="text-muted">N/A</span>'}</td>
-                    <td>${system.check_type || 'ping'}</td>
-                    <td>
-                        ${system.target || ''}
-                        ${system.cluster_nodes && system.cluster_nodes.length > 0 ? 
-                            `<span class="badge bg-info ms-1" title="Cluster Nodes: ${system.cluster_nodes.join(', ')}" data-bs-toggle="tooltip">
-                                <i class="fas fa-server"></i> ${system.cluster_nodes.length}
-                            </span>` : 
-                            ''}
-                    </td>
-                    <td>
-                        ${system.db_name ? 
-                            `${system.db_name}${system.db_type ? ` (${system.db_type})` : ''}` : 
-                            '<span class="text-muted">N/A</span>'}
-                    </td>
-                    <td>${system.owner || '<span class="text-muted">N/A</span>'}</td>
-                    <td>
-                        ${system.last_check ? 
-                            `<span title="${new Date(system.last_check.$date || system.last_check).toLocaleString()}" data-bs-toggle="tooltip">
-                                ${formatTimeAgo(new Date(system.last_check.$date || system.last_check))}
-                            </span>` : 
-                            '<span class="text-muted">Never</span>'}
-                    </td>
-                    <td>
-                        <div class="btn-group">
-                            <button class="btn btn-sm btn-success" onclick="checkSystem('${systemId}')"
-                                    title="Test system connectivity and services"
-                                    aria-label="Trigger system test">
-                                <i class="fas fa-sync-alt"></i> Trigger Test
-                            </button>
-                            <button class="btn btn-sm btn-info" onclick="editSystem('${systemId}')"
-                                    title="Edit system configuration"
-                                    aria-label="Edit system">
-                                <i class="fas fa-edit"></i> Edit
-                            </button>
-                            <button class="btn btn-sm btn-danger" onclick="deleteSystem('${systemId}')"
-                                    title="Delete this system"
-                                    aria-label="Delete system">
-                                <i class="fas fa-trash"></i> Delete
-                            </button>
-                        </div>
-                    </td>
-                `;
+                const row = createSystemRow(system);
                 tbody.appendChild(row);
             });
 
@@ -578,19 +542,183 @@
             });
         }
 
-        function formatTimeAgo(date) {
-            const now = new Date();
-            const diffMs = now - date;
-            const diffSec = Math.round(diffMs / 1000);
-            const diffMin = Math.round(diffSec / 60);
-            const diffHour = Math.round(diffMin / 60);
-            const diffDay = Math.round(diffHour / 24);
+        // Add sorting function
+        let sortDirection = 1;
+        let lastSortedColumn = -1;
 
-            if (diffSec < 60) return `${diffSec}s ago`;
-            if (diffMin < 60) return `${diffMin}m ago`;
-            if (diffHour < 24) return `${diffHour}h ago`;
-            if (diffDay < 30) return `${diffDay}d ago`;
-            return date.toLocaleDateString();
+        function sortTable(column) {
+            const table = document.getElementById('systemsTable');
+            const tbody = table.getElementsByTagName('tbody')[0];
+            const rows = Array.from(tbody.getElementsByTagName('tr'));
+            
+            // Update sort direction
+            if (lastSortedColumn === column) {
+                sortDirection *= -1;
+            } else {
+                sortDirection = 1;
+            }
+            lastSortedColumn = column;
+            
+            // Update sort icons
+            const headers = table.getElementsByTagName('th');
+            for (let i = 0; i < headers.length; i++) {
+                const icon = headers[i].getElementsByTagName('i')[0];
+                if (i === column) {
+                    icon.className = sortDirection === 1 ? 'fas fa-sort-up' : 'fas fa-sort-down';
+                } else {
+                    icon.className = 'fas fa-sort';
+                }
+            }
+            
+            // Sort rows
+            rows.sort((a, b) => {
+                let aValue = a.cells[column].textContent.trim();
+                let bValue = b.cells[column].textContent.trim();
+                
+                // Handle status column specially
+                if (column === 4) { // Status column
+                    aValue = a.cells[column].querySelector('.status-badge').classList.contains('online');
+                    bValue = b.cells[column].querySelector('.status-badge').classList.contains('online');
+                }
+                
+                // Handle sequence column specially
+                if (column === 5) { // Sequence column
+                    const sequenceOrder = {'not_started': 0, 'in_progress': 1, 'completed': 2};
+                    aValue = sequenceOrder[a.cells[column].querySelector('select').value];
+                    bValue = sequenceOrder[b.cells[column].querySelector('select').value];
+                }
+                
+                if (aValue < bValue) return -1 * sortDirection;
+                if (aValue > bValue) return 1 * sortDirection;
+                return 0;
+            });
+            
+            // Reorder rows
+            rows.forEach(row => tbody.appendChild(row));
+        }
+
+        // Update test results display
+        function createSystemRow(system) {
+            const row = document.createElement('tr');
+            
+            // Prepare test results display
+            let statusHtml = '';
+            let testResults = [];
+            
+            // Main target tests
+            if (system.target) {
+                if (system.check_type === 'http' || system.check_type === 'both') {
+                    testResults.push({
+                        type: 'HTTP',
+                        target: system.target,
+                        status: system.http_status,
+                        error: system.http_error
+                    });
+                }
+                if (system.check_type === 'ping' || system.check_type === 'both') {
+                    testResults.push({
+                        type: 'Ping',
+                        target: system.target,
+                        status: system.ping_status,
+                        error: system.ping_error
+                    });
+                }
+            }
+            
+            // Cluster nodes tests
+            if (system.cluster_nodes) {
+                system.cluster_nodes.forEach(node => {
+                    if (system.check_type === 'http' || system.check_type === 'both') {
+                        testResults.push({
+                            type: 'HTTP',
+                            target: node.host,
+                            status: node.http_status,
+                            error: node.http_error
+                        });
+                    }
+                    if (system.check_type === 'ping' || system.check_type === 'both') {
+                        testResults.push({
+                            type: 'Ping',
+                            target: node.host,
+                            status: node.ping_status,
+                            error: node.ping_error
+                        });
+                    }
+                });
+            }
+            
+            // Build status HTML
+            statusHtml = `
+                <div class="status-container">
+                    <span class="status-badge ${system.status ? 'online' : 'offline'}"
+                          title="${system.last_error || (system.status ? 'System is online' : 'System is offline')}">
+                        ${system.status ? 'Online' : 'Offline'}
+                    </span>
+                    <div class="test-results mt-2">
+                        ${testResults.map(test => `
+                            <div class="test-result">
+                                <small>
+                                    ${test.type} (${test.target}): 
+                                    <span class="badge ${test.status ? 'bg-success' : 'bg-danger'}"
+                                          title="${test.error || (test.status ? 'Test passed' : 'Test failed')}">
+                                        ${test.status ? 'Pass' : 'Fail'}
+                                    </span>
+                                </small>
+                            </div>
+                        `).join('')}
+                    </div>
+                    ${system.db_status !== null ? `
+                        <div class="db-status mt-2">
+                            <small title="Database Status">DB: 
+                                <span class="status-badge ${system.db_status ? 'online' : 'offline'}">
+                                    ${system.db_status ? 'Online' : 'Offline'}
+                                </span>
+                            </small>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+            
+            row.innerHTML = `
+                <td>${system.name}</td>
+                <td>${system.app_name || 'N/A'}</td>
+                <td>
+                    ${system.target || 'N/A'}
+                    ${system.cluster_nodes ? 
+                        `<br><small>Cluster Nodes: ${system.cluster_nodes.map(node => 
+                            node.host).join(', ')}</small>` 
+                        : ''}
+                </td>
+                <td>${system.db_name || 'N/A'}</td>
+                <td>${statusHtml}</td>
+                <td>
+                    <select class="form-control sequence-status" 
+                            onchange="updateSequenceStatus('${system._id}', this.value)"
+                            aria-label="Update sequence status">
+                        <option value="not_started" ${system.sequence_status === 'not_started' ? 'selected' : ''}>Not Started</option>
+                        <option value="in_progress" ${system.sequence_status === 'in_progress' ? 'selected' : ''}>In Progress</option>
+                        <option value="completed" ${system.sequence_status === 'completed' ? 'selected' : ''}>Completed</option>
+                    </select>
+                </td>
+                <td>
+                    <button class="btn btn-sm btn-success" onclick="checkSystem('${system._id}')" 
+                            title="Test system connectivity and services"
+                            aria-label="Trigger system test">
+                        <i class="fas fa-sync-alt"></i> Trigger Test
+                    </button>
+                    <button class="btn btn-sm btn-info" onclick="editSystem('${system._id}')"
+                            title="Edit system configuration"
+                            aria-label="Edit system">
+                        <i class="fas fa-edit"></i> Edit
+                    </button>
+                    <button class="btn btn-sm btn-danger" onclick="deleteSystem('${system._id}')"
+                            title="Delete this system"
+                            aria-label="Delete system">
+                        <i class="fas fa-trash"></i> Delete
+                    </button>
+                </td>
+            `;
+            return row;
         }
 
         // Edit system
@@ -1401,13 +1529,6 @@
                           title="${system.last_error || (system.status ? 'System is online' : 'System is offline')}">
                         ${system.status ? 'Online' : 'Offline'}
                     </span>
-                    ${system.db_status !== null ? 
-                        `<br><small title="Database Status">DB: 
-                            <span class="status-badge ${system.db_status ? 'online' : 'offline'}">
-                                ${system.db_status ? 'Online' : 'Offline'}
-                            </span>
-                        </small>` 
-                        : ''}
                 </td>
                 <td>
                     <select class="form-control sequence-status" onchange="updateSequenceStatus('${system._id}', this.value)"
