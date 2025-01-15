@@ -221,11 +221,11 @@ def update_status():
 def import_systems():
     try:
         if 'file' not in request.files:
-            return jsonify({"error": "No file provided"}), 400
+            return jsonify({"success": False, "error": "No file provided"}), 400
         
         file = request.files['file']
         if not file.filename.endswith('.csv'):
-            return jsonify({"error": "File must be a CSV"}), 400
+            return jsonify({"success": False, "error": "File must be a CSV"}), 400
 
         # Get import options
         options = json.loads(request.form.get('options', '{}'))
@@ -233,12 +233,22 @@ def import_systems():
         update_existing = options.get('update_existing', False)
         auto_map_fields = options.get('auto_map_fields', True)
 
-        # Read CSV file with UTF-8 encoding
-        csv_content = file.read().decode('utf-8-sig')  # Handle BOM if present
-        csv_reader = csv.DictReader(io.StringIO(csv_content))
-        
-        if not csv_reader.fieldnames:
-            return jsonify({"error": "CSV file has no headers"}), 400
+        try:
+            # Read CSV file with UTF-8 encoding, handle BOM if present
+            content = file.read()
+            try:
+                csv_content = content.decode('utf-8-sig')
+            except UnicodeDecodeError:
+                csv_content = content.decode('latin-1')  # Fallback encoding
+        except Exception as e:
+            return jsonify({"success": False, "error": f"Error reading CSV file: {str(e)}"}), 400
+
+        try:
+            csv_reader = csv.DictReader(io.StringIO(csv_content))
+            if not csv_reader.fieldnames:
+                return jsonify({"success": False, "error": "CSV file has no headers"}), 400
+        except Exception as e:
+            return jsonify({"success": False, "error": f"Error parsing CSV: {str(e)}"}), 400
 
         # Get field mapping
         mapping = json.loads(request.form.get('mapping', '{}'))
@@ -246,6 +256,8 @@ def import_systems():
         # Auto-map fields if enabled
         if auto_map_fields and not mapping:
             mapping = auto_map_csv_fields(csv_reader.fieldnames)
+            if not mapping:
+                return jsonify({"success": False, "error": "Could not automatically map fields"}), 400
 
         # Initialize counters and error tracking
         results = {
@@ -262,23 +274,40 @@ def import_systems():
         for row_num, row in enumerate(csv_reader, start=1):
             try:
                 results["total"] += 1
-                system = process_csv_row(row, mapping, row_num)
                 
-                if not system:
+                # Create system dict with mapped fields
+                system = {}
+                for field, header in mapping.items():
+                    if header in row:
+                        value = row[header].strip()
+                        if value:  # Only add non-empty values
+                            system[field] = value
+
+                # Validate required fields
+                if not system.get('name'):
                     results["failed"] += 1
+                    results["errors"].append(f"Row {row_num}: System Name is required")
                     continue
 
                 # Check for existing system
                 existing_system = mongo.db.systems.find_one({"name": system['name']})
-                
                 if existing_system:
                     if update_existing:
-                        # Update existing system
-                        system['_id'] = existing_system['_id']
-                        system['created_at'] = existing_system['created_at']
-                        mongo.db.systems.replace_one({'_id': existing_system['_id']}, system)
-                        results["updated"] += 1
-                        results["warnings"].append(f"Row {row_num}: Updated existing system '{system['name']}'")
+                        try:
+                            # Preserve existing ID and created_at
+                            system['_id'] = existing_system['_id']
+                            system['created_at'] = existing_system['created_at']
+                            
+                            # Set default values
+                            set_system_defaults(system)
+                            
+                            # Update the existing system
+                            mongo.db.systems.replace_one({'_id': existing_system['_id']}, system)
+                            results["updated"] += 1
+                            results["warnings"].append(f"Row {row_num}: Updated existing system '{system['name']}'")
+                        except Exception as e:
+                            results["failed"] += 1
+                            results["errors"].append(f"Row {row_num}: Error updating system '{system['name']}': {str(e)}")
                     elif skip_duplicates:
                         results["skipped"] += 1
                         results["warnings"].append(f"Row {row_num}: Skipped duplicate system '{system['name']}'")
@@ -287,14 +316,21 @@ def import_systems():
                         results["errors"].append(f"Row {row_num}: System '{system['name']}' already exists")
                     continue
 
-                # Insert new system
-                mongo.db.systems.insert_one(system)
-                results["added"] += 1
+                # Set default values for new system
+                set_system_defaults(system)
+
+                # Insert the new system
+                try:
+                    mongo.db.systems.insert_one(system)
+                    results["added"] += 1
+                except Exception as e:
+                    results["failed"] += 1
+                    results["errors"].append(f"Row {row_num}: Error adding system '{system['name']}': {str(e)}")
 
             except Exception as e:
+                results["failed"] += 1
                 error_msg = f"Row {row_num}: {str(e)}"
                 results["errors"].append(error_msg)
-                results["failed"] += 1
                 print(f"Error processing row: {error_msg}")
 
         # Prepare response message
@@ -316,140 +352,83 @@ def import_systems():
             "error": f"Error importing systems: {str(e)}"
         }), 500
 
-def process_csv_row(row, mapping, row_num):
-    """Process a single CSV row and return a system dict."""
-    try:
-        # Create system dict with mapped fields
-        system = {}
-        
-        # Map fields according to user's mapping
-        for field, header in mapping.items():
-            if header in row:
-                value = row[header].strip()
-                if value:  # Only add non-empty values
-                    system[field] = value
+def set_system_defaults(system):
+    """Set default values for a system document."""
+    # Set timestamps
+    system.setdefault('created_at', datetime.now())
+    system.setdefault('last_check', datetime.now())
+    
+    # Set status fields
+    system.setdefault('status', False)
+    system.setdefault('sequence_status', "not_started")
+    system.setdefault('http_status', False)
+    system.setdefault('http_error', "")
+    system.setdefault('ping_status', False)
+    system.setdefault('ping_error', "")
+    system.setdefault('db_status', False)
+    system.setdefault('last_error', "")
 
-        # Validate required fields
-        if not system.get('name'):
-            raise ValueError("System Name is required")
-
-        # Set default values and timestamps
-        system.update({
-            'created_at': datetime.now(),
-            'last_check': datetime.now(),
-            'status': False,
-            'sequence_status': "not_started",
-            'http_status': False,
-            'http_error': "",
-            'ping_status': False,
-            'ping_error': "",
-            'db_status': False,
-            'last_error': ""
-        })
-
-        # Process check_type
-        system['check_type'] = system.get('check_type', 'ping').lower()
+    # Process check_type
+    if 'check_type' in system:
+        system['check_type'] = system['check_type'].lower()
         if system['check_type'] not in ['http', 'ping', 'both']:
             system['check_type'] = 'ping'
+    else:
+        system['check_type'] = 'ping'
 
-        # Process mount points
-        if 'mount_points' in system:
-            mount_points = [p.strip() for p in system['mount_points'].split(',')]
-            system['mount_points'] = [p for p in mount_points if p]
-        else:
-            system['mount_points'] = []
+    # Process mount points
+    if 'mount_points' in system and isinstance(system['mount_points'], str):
+        mount_points = [p.strip() for p in system['mount_points'].split(',')]
+        system['mount_points'] = [p for p in mount_points if p]
+    else:
+        system['mount_points'] = []
 
-        # Process shutdown sequence
-        if 'shutdown_sequence' in system:
-            sequence = [s.strip() for s in system['shutdown_sequence'].split(';')]
-            system['shutdown_sequence'] = [s for s in sequence if s]
-        else:
-            system['shutdown_sequence'] = []
+    # Process shutdown sequence
+    if 'shutdown_sequence' in system and isinstance(system['shutdown_sequence'], str):
+        sequence = [s.strip() for s in system['shutdown_sequence'].split(';')]
+        system['shutdown_sequence'] = [s for s in sequence if s]
+    else:
+        system['shutdown_sequence'] = []
 
-        # Process cluster nodes
-        if 'cluster_nodes' in system:
-            nodes = [n.strip() for n in system['cluster_nodes'].split(';')]
-            nodes = [n for n in nodes if n]
-            if nodes:
-                system['cluster_nodes'] = [
-                    {
-                        'host': node,
-                        'status': False,
-                        'last_check': datetime.now(),
-                        'http_status': False,
-                        'http_error': "",
-                        'ping_status': False,
-                        'ping_error': ""
-                    }
-                    for node in nodes
-                ]
-        else:
-            system['cluster_nodes'] = []
+    # Process cluster nodes
+    if 'cluster_nodes' in system and isinstance(system['cluster_nodes'], str):
+        nodes = [n.strip() for n in system['cluster_nodes'].split(';')]
+        nodes = [n for n in nodes if n]
+        if nodes:
+            system['cluster_nodes'] = [
+                {
+                    'host': node,
+                    'status': False,
+                    'last_check': datetime.now(),
+                    'http_status': False,
+                    'http_error': "",
+                    'ping_status': False,
+                    'ping_error': ""
+                }
+                for node in nodes
+            ]
+    else:
+        system['cluster_nodes'] = []
 
-        # Process database port
-        if 'db_port' in system:
-            try:
-                system['db_port'] = int(system['db_port'])
-            except (ValueError, TypeError):
-                system['db_port'] = None
+    # Process database port
+    if 'db_port' in system:
+        try:
+            system['db_port'] = int(system['db_port'])
+        except (ValueError, TypeError):
+            system['db_port'] = None
 
-        # Set default values for optional fields
-        defaults = {
-            'app_name': 'N/A',
-            'db_name': 'N/A',
-            'db_type': 'N/A',
-            'owner': 'N/A'
-        }
-        for field, default in defaults.items():
-            system.setdefault(field, default)
-
-        # Validate target
-        if not system.get('target') and not system.get('cluster_nodes'):
-            raise ValueError("Target URL/IP is required for non-cluster systems")
-
-        return system
-
-    except Exception as e:
-        print(f"Error processing row {row_num}: {str(e)}")
-        return None
-
-def auto_map_csv_fields(headers):
-    """Automatically map CSV headers to system fields based on similarity."""
-    field_mappings = {
-        'name': ['name', 'system_name', 'hostname', 'system'],
-        'app_name': ['app_name', 'application', 'app', 'service_name'],
-        'target': ['target', 'url', 'ip', 'address', 'endpoint'],
-        'check_type': ['check_type', 'type', 'monitoring_type'],
-        'db_name': ['db_name', 'database_name', 'database'],
-        'db_type': ['db_type', 'database_type', 'db_engine'],
-        'db_port': ['db_port', 'database_port', 'port'],
-        'owner': ['owner', 'responsible', 'contact', 'maintainer'],
-        'mount_points': ['mount_points', 'mounts', 'volumes'],
-        'shutdown_sequence': ['shutdown_sequence', 'shutdown', 'stop_sequence'],
-        'cluster_nodes': ['cluster_nodes', 'nodes', 'cluster', 'members']
+    # Set default values for optional fields
+    defaults = {
+        'app_name': 'N/A',
+        'target': system.get('target', 'N/A'),
+        'db_name': 'N/A',
+        'db_type': 'N/A',
+        'owner': 'N/A'
     }
+    for field, default in defaults.items():
+        system.setdefault(field, default)
 
-    mapping = {}
-    
-    # Convert headers to lowercase for case-insensitive matching
-    headers_lower = [h.lower() for h in headers]
-    
-    # First pass: exact matches
-    for field, alternatives in field_mappings.items():
-        for alt in alternatives:
-            if alt in headers_lower:
-                mapping[field] = headers[headers_lower.index(alt)]
-                break
-    
-    # Second pass: partial matches for unmapped fields
-    for field, alternatives in field_mappings.items():
-        if field not in mapping:
-            for header, header_lower in zip(headers, headers_lower):
-                if any(alt in header_lower for alt in alternatives):
-                    mapping[field] = header
-                    break
-    
-    return mapping
+    return system
 
 @app.route('/api/systems/export')
 def export_systems():
