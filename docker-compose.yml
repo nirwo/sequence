@@ -21,6 +21,7 @@ services:
   mongodb:
     image: mongo:latest
     container_name: mongodb
+    command: mongod --bind_ip_all
     environment:
       - MONGO_INITDB_DATABASE=app_monitor
     ports:

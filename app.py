@@ -396,8 +396,14 @@ def import_mapped_csv():
         if not mapping:
             return jsonify({"error": "No field mapping provided"}), 400
 
-        # Read CSV content
-        stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
+        print(f"Received mapping: {mapping}")  # Debug log
+
+        # Read CSV content with explicit encoding
+        try:
+            stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
+        except UnicodeDecodeError:
+            stream = io.StringIO(file.stream.read().decode("latin-1"), newline=None)
+        
         csv_reader = csv.DictReader(stream)
         
         systems_added = 0
@@ -405,11 +411,15 @@ def import_mapped_csv():
         
         for row_num, row in enumerate(csv_reader, start=2):  # Start from 2 since row 1 is header
             try:
+                print(f"Processing row {row_num}: {row}")  # Debug log
+                
                 # Map fields according to provided mapping
                 system = {
                     'created_at': datetime.now(),
                     'last_check': datetime.now(),
-                    'status': False
+                    'status': False,
+                    'sequence_status': 'not_started',
+                    'last_error': ''
                 }
 
                 # Map fields from CSV
@@ -418,13 +428,25 @@ def import_mapped_csv():
                         value = row[csv_header].strip() if row[csv_header] else None
                         if value:  # Only set if value is not empty
                             if field == 'cluster_nodes':
-                                system[field] = [node.strip() for node in value.split(',') if node.strip()]
+                                system[field] = [node.strip() for node in value.split(';') if node.strip()]
                             elif field == 'mount_points':
-                                system[field] = [point.strip() for point in value.split(',') if point.strip()]
+                                system[field] = [point.strip() for point in value.split(';') if point.strip()]
                             elif field == 'shutdown_sequence':
-                                system[field] = [step.strip() for step in value.split(',') if step.strip()]
+                                system[field] = [step.strip() for step in value.split(';') if step.strip()]
                             else:
                                 system[field] = value
+
+                # Set default values for optional fields
+                system['app_name'] = system.get('app_name') or 'N/A'
+                system['db_name'] = system.get('db_name') or 'N/A'
+                system['db_type'] = system.get('db_type') or 'N/A'
+                system['owner'] = system.get('owner') or 'N/A'
+                system['db_port'] = system.get('db_port')
+                if system.get('db_port'):
+                    try:
+                        system['db_port'] = int(system['db_port'])
+                    except ValueError:
+                        system['db_port'] = None
 
                 # Validate required fields
                 if not system.get('name'):
@@ -446,24 +468,34 @@ def import_mapped_csv():
                     errors.append(f"Row {row_num}: Target URL/IP is required for non-cluster systems")
                     continue
 
+                print(f"Inserting system: {system}")  # Debug log
+
                 # Insert the system
-                mongo.db.systems.insert_one(system)
-                systems_added += 1
+                try:
+                    mongo.db.systems.insert_one(system)
+                    systems_added += 1
+                except DuplicateKeyError:
+                    errors.append(f"Row {row_num}: System with name '{system['name']}' already exists")
+                except Exception as e:
+                    errors.append(f"Row {row_num}: Error inserting system: {str(e)}")
 
             except Exception as e:
-                errors.append(f"Row {row_num}: {str(e)}")
+                errors.append(f"Row {row_num}: Error processing row: {str(e)}")
+                print(f"Error processing row {row_num}: {str(e)}")  # Debug log
+                continue
 
-        response = {
-            "message": f"Successfully imported {systems_added} systems",
-            "systems_added": systems_added
+        result = {
+            "systems_added": systems_added,
+            "errors": errors
         }
         
-        if errors:
-            response["warnings"] = errors
-
-        return jsonify(response)
+        if systems_added == 0 and errors:
+            return jsonify(result), 400
+            
+        return jsonify(result)
 
     except Exception as e:
+        print(f"Error in import_mapped_csv: {str(e)}")  # Debug log
         return jsonify({"error": f"Error processing CSV file: {str(e)}"}), 400
 
 @app.route('/api/csv/template', methods=['GET'])
