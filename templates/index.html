@@ -1504,7 +1504,6 @@
                         throw new Error(data.error);
                     }
                     fetchSystems();  // Refresh the systems table
-                    updateSummary(); // Refresh the summary
                     showToast('All systems checked successfully', 'success');
                 })
                 .catch(error => {
@@ -1534,62 +1533,20 @@
                 });
         }
 
-        // Update summary
-        function updateSummary() {
-            fetch('/api/systems/summary')
-                .then(response => response.json())
-                .then(data => {
-                    // Update system counts
-                    document.getElementById('totalSystems').textContent = data.total_systems;
-                    document.getElementById('onlineSystems').textContent = data.online_systems;
-                    document.getElementById('offlineSystems').textContent = data.offline_systems;
-                    
-                    // Update database counts
-                    document.getElementById('dbTotal').textContent = data.db_total;
-                    document.getElementById('dbOnline').textContent = data.db_online;
-                    document.getElementById('dbOffline').textContent = data.db_offline;
-                    
-                    // Update sequence status
-                    document.getElementById('notStartedCount').textContent = data.sequence_status.not_started;
-                    document.getElementById('inProgressCount').textContent = data.sequence_status.in_progress;
-                    document.getElementById('completedCount').textContent = data.sequence_status.completed;
-                    
-                    // Update recent errors
-                    const recentErrorsList = document.getElementById('recentErrors');
-                    recentErrorsList.innerHTML = '';
-                    
-                    if (data.recent_errors && data.recent_errors.length > 0) {
-                        data.recent_errors.forEach(error => {
-                            const li = document.createElement('li');
-                            li.className = 'list-group-item';
-                            li.innerHTML = `
-                                <strong>${error.system_name}</strong>: ${error.error}
-                                ${error.timestamp ? `<br><small class="text-muted">at ${new Date(error.timestamp).toLocaleString()}</small>` : ''}
-                            `;
-                            recentErrorsList.appendChild(li);
-                        });
-                    } else {
-                        const li = document.createElement('li');
-                        li.className = 'list-group-item text-muted';
-                        li.textContent = 'No recent errors';
-                        recentErrorsList.appendChild(li);
-                    }
-                })
-                .catch(error => {
-                    console.error('Error updating summary:', error);
-                    showToast('Failed to update summary', 'error');
-                });
-        }
-
         // Initialize page
         fetchSystems();
-        updateSummary();
         
-        // Update summary every 30 seconds
-        setInterval(() => {
+        // Set up refresh button handler
+        document.getElementById('refreshButton').addEventListener('click', function() {
             fetchSystems();
-            updateSummary();
-        }, 30000);
+        });
+
+        // Event listeners for modal
+        document.getElementById('addSystemWizardModal').addEventListener('hidden.bs.modal', function () {
+            currentStep = 1;
+            showStep(1);
+            document.getElementById('addSystemWizardForm').reset();
+        });
     </script>
 </body>
 </html>
