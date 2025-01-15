@@ -47,13 +47,35 @@ def add_system():
         # Handle empty or missing fields
         if not system.get('name'):
             return jsonify({"error": "Server Name is required"}), 400
-            
+
+        # Set default values for optional fields
+        system['app_name'] = system.get('app_name') or 'N/A'
+        system['db_name'] = system.get('db_name') or None
+        system['db_type'] = system.get('db_type') or None
+        system['owner'] = system.get('owner') or 'N/A'
+        
+        # Handle array fields with proper defaults
+        if not system.get('mount_points'):
+            system['mount_points'] = None
+        elif isinstance(system['mount_points'], str):
+            system['mount_points'] = [point.strip() for point in system['mount_points'].split(';') if point.strip()]
+            if not system['mount_points']:
+                system['mount_points'] = None
+
+        if not system.get('shutdown_sequence'):
+            system['shutdown_sequence'] = None
+        elif isinstance(system['shutdown_sequence'], str):
+            system['shutdown_sequence'] = [step.strip() for step in system['shutdown_sequence'].split(';') if step.strip()]
+            if not system['shutdown_sequence']:
+                system['shutdown_sequence'] = None
+        
         # Handle cluster nodes
-        if 'cluster_nodes' in system:
-            if isinstance(system['cluster_nodes'], str):
-                system['cluster_nodes'] = [node.strip() for node in system['cluster_nodes'].split(',') if node.strip()]
-            elif not isinstance(system['cluster_nodes'], list):
-                system['cluster_nodes'] = []
+        if not system.get('cluster_nodes'):
+            system['cluster_nodes'] = None
+        elif isinstance(system['cluster_nodes'], str):
+            system['cluster_nodes'] = [node.strip() for node in system['cluster_nodes'].split(';') if node.strip()]
+            if not system['cluster_nodes']:
+                system['cluster_nodes'] = None
         
         # Handle target for cluster systems
         if not system.get('target') and system.get('cluster_nodes'):
@@ -64,13 +86,9 @@ def add_system():
             return jsonify({"error": "Target URL/IP is required for non-cluster systems"}), 400
             
         # Set default check type if not provided
-        if not system.get('check_type'):
+        system['check_type'] = system.get('check_type', 'ping').lower()
+        if system['check_type'] not in ['http', 'ping']:
             system['check_type'] = 'ping'
-            
-        # Clean empty strings to None
-        for key in system:
-            if isinstance(system[key], str) and not system[key].strip():
-                system[key] = None
         
         mongo.db.systems.insert_one(system)
         return jsonify({"message": "System added successfully"})
@@ -193,39 +211,45 @@ def import_systems():
         for row in csv_reader:
             try:
                 system = {
-                    'name': row.get('System Name', '').strip(),
+                    'name': row.get('Server Name', '').strip(),
                     'app_name': row.get('Application Name', '').strip(),
                     'check_type': row.get('Check Type', 'http').strip().lower(),
                     'target': row.get('Target URL/IP', '').strip(),
-                    'db_name': row.get('Database Name', '').strip(),
-                    'db_type': row.get('Database Type', '').strip(),
-                    'mount_points': row.get('Mount Points', '').strip(),
-                    'owner': row.get('Owner', '').strip(),
-                    'shutdown_sequence': row.get('Shutdown Sequence', '').strip(),
+                    'db_name': row.get('Database Name', '').strip() or None,
+                    'db_type': row.get('Database Type', '').strip() or None,
+                    'owner': row.get('Owner', '').strip() or None,
                     'created_at': datetime.now(),
-                    'last_check': datetime.now(),
+                    'last_check': None,
                     'status': False
                 }
 
-                # Validate required fields
-                if not system['name'] or not system['app_name']:
-                    errors.append(f"Row {systems_added + 1}: System Name and Application Name are required")
-                    continue
+                # Handle mount points
+                mount_points = row.get('Mount Points', '').strip()
+                if mount_points:
+                    system['mount_points'] = [point.strip() for point in mount_points.split(';') if point.strip()]
+                else:
+                    system['mount_points'] = None
 
-                # Handle check type
-                if system['check_type'] not in ['http', 'ping']:
-                    system['check_type'] = 'http'
+                # Handle shutdown sequence
+                shutdown_sequence = row.get('Shutdown Sequence', '').strip()
+                if shutdown_sequence:
+                    system['shutdown_sequence'] = [step.strip() for step in shutdown_sequence.split(';') if step.strip()]
+                else:
+                    system['shutdown_sequence'] = None
 
                 # Handle cluster nodes
                 cluster_nodes = row.get('Cluster Nodes', '').strip()
                 if cluster_nodes:
-                    system['cluster_nodes'] = [node.strip() for node in cluster_nodes.split(',') if node.strip()]
+                    system['cluster_nodes'] = [node.strip() for node in cluster_nodes.split(';') if node.strip()]
                     if not system['target'] and system['cluster_nodes']:
                         system['target'] = system['cluster_nodes'][0]
+                else:
+                    system['cluster_nodes'] = None
 
-                # Handle mount points
-                if system['mount_points']:
-                    system['mount_points'] = system['mount_points'].replace(';', ',')
+                # Validate required fields
+                if not system['name']:
+                    errors.append(f"Row {systems_added + 1}: Server Name is required")
+                    continue
 
                 # Validate target
                 if not system['target'] and not system.get('cluster_nodes'):
@@ -396,10 +420,10 @@ def download_csv_template():
             'http://example.com',
             'example_db',
             'postgres',
-            '/mnt/data,/mnt/logs',
+            '/mnt/data;/mnt/logs',
             'John Doe',
-            'service1,service2,service3',
-            'node1.example.com,node2.example.com'
+            'service nginx stop;service app stop',
+            'node1.example.com;node2.example.com'
         ]
         writer.writerow(example_row)
         
@@ -440,57 +464,44 @@ def download_example_csv():
         
         # Write example rows
         example_rows = [
-            # Standalone server with application
+            # Standalone web server
             [
                 'webserver01',
                 'Company Website',
                 'http',
-                'http://webserver01:8080',
+                'http://example.com',
                 '',
                 '',
-                '/mnt/logs',
+                '/var/www/html;/var/log/nginx',
                 'John Doe',
-                'service nginx stop,service app stop',
+                'service nginx stop;service php-fpm stop',
                 ''
             ],
-            # Standalone database server
+            # Database server
             [
                 'dbserver01',
-                '',
+                'PostgreSQL DB',
                 'ping',
                 '192.168.1.100',
                 'main_db',
                 'postgres',
-                '/mnt/data,/mnt/backup',
+                '/var/lib/postgresql/data;/backup',
                 'Jane Smith',
-                'service postgresql stop',
+                'pg_ctl stop -D /var/lib/postgresql/data',
                 ''
             ],
-            # Multi-node application cluster
+            # Load balancer cluster
             [
                 'app-cluster',
                 'Load Balancer',
                 'http',
-                'http://app-lb:8080',
+                '192.168.1.200',
                 'app_db',
                 'mysql',
-                '/mnt/app/data',
+                '/var/lib/mysql;/var/log/mysql',
                 'Mike Johnson',
-                'service haproxy stop,service app stop',
-                'app01.example.com,app02.example.com,app03.example.com'
-            ],
-            # Standalone application server
-            [
-                'appserver01',
-                'Internal Tool',
-                'http',
-                'http://appserver01:3000',
-                '',
-                '',
-                '',
-                'Alice Brown',
-                '',
-                ''
+                'service haproxy stop;service mysql stop',
+                'node1.example.com;node2.example.com'
             ]
         ]
         for row in example_rows:
