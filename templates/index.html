@@ -804,7 +804,7 @@
             });
             
             if (!isValid) {
-                showToast('Please correct the invalid fields', 'error');
+                showToast('Please fill in all required fields', 'error');
                 return;
             }
 
@@ -813,37 +813,47 @@
             const system = Object.fromEntries(formData.entries());
 
             // Set default values for optional fields
-            system.app_name = system.app_name || 'N/A';
-            system.owner = system.owner || 'N/A';
+            system.app_name = system.app_name?.trim() || 'N/A';
+            system.owner = system.owner?.trim() || 'N/A';
 
             // Handle database fields
             if (!document.getElementById('hasDatabase').checked) {
-                system.db_type = null;
-                system.db_name = null;
+                system.db_type = 'N/A';
+                system.db_name = 'N/A';
             } else {
-                system.db_type = system.db_type || null;
-                system.db_name = system.db_name || null;
+                system.db_type = system.db_type?.trim() || 'N/A';
+                system.db_name = system.db_name?.trim() || 'N/A';
             }
 
             // Handle shutdown sequence
             if (!document.getElementById('hasShutdownSequence').checked) {
-                system.shutdown_sequence = null;
+                system.shutdown_sequence = 'N/A';
             } else {
                 const shutdownInputs = document.querySelectorAll('.shutdown-step-input');
                 const steps = Array.from(shutdownInputs)
                     .map(input => input.value.trim())
                     .filter(step => step);
-                system.shutdown_sequence = steps.length > 0 ? steps.join(';') : null;
+                system.shutdown_sequence = steps.length > 0 ? steps.join(';') : 'N/A';
             }
 
             // Handle cluster nodes
-            const clusterNodes = system.cluster_nodes ? system.cluster_nodes.split(';')
-                .map(node => node.trim())
-                .filter(node => node) : null;
-            system.cluster_nodes = clusterNodes && clusterNodes.length > 0 ? clusterNodes : null;
+            if (system.cluster_nodes) {
+                const nodes = system.cluster_nodes.split(';')
+                    .map(node => node.trim())
+                    .filter(node => node);
+                system.cluster_nodes = nodes.length > 0 ? nodes : null;
+            } else {
+                system.cluster_nodes = null;
+            }
 
             // Set default check type
             system.check_type = system.check_type || 'ping';
+
+            // Validate target
+            if (!system.target?.trim() && !system.cluster_nodes) {
+                showToast('Target URL/IP is required for non-cluster systems', 'error');
+                return;
+            }
 
             // Add system
             fetch('/api/systems', {
@@ -1179,6 +1189,7 @@
             tbody.innerHTML = '';
 
             systems.forEach(system => {
+                const systemId = system._id.$oid || system._id;
                 const row = document.createElement('tr');
                 const statusClass = system.status ? 'bg-success' : 'bg-danger';
                 const statusText = system.status ? 'Online' : 'Offline';
@@ -1202,10 +1213,10 @@
                     </td>
                     <td>${lastCheck}</td>
                     <td>
-                        <button class="btn btn-sm btn-primary" onclick="checkSystem('${system._id}')">
+                        <button class="btn btn-sm btn-primary" onclick="checkSystem('${systemId}')">
                             <i class="bi bi-arrow-clockwise"></i>
                         </button>
-                        <button class="btn btn-sm btn-danger" onclick="deleteSystem('${system._id}')">
+                        <button class="btn btn-sm btn-danger" onclick="deleteSystem('${systemId}')">
                             <i class="bi bi-trash"></i>
                         </button>
                     </td>

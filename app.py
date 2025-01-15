@@ -44,7 +44,7 @@ def add_system():
         
         # Set default values
         system['created_at'] = datetime.now()
-        system['last_check'] = datetime.now()  # Set initial last_check
+        system['last_check'] = datetime.now()
         system['status'] = False
         
         # Handle empty or missing fields
@@ -53,21 +53,10 @@ def add_system():
 
         # Set default values for optional fields
         system['app_name'] = system.get('app_name') or 'N/A'
-        system['db_name'] = system.get('db_name') or None
-        system['db_type'] = system.get('db_type') or None
+        system['db_name'] = system.get('db_name') or 'N/A'
+        system['db_type'] = system.get('db_type') or 'N/A'
         system['owner'] = system.get('owner') or 'N/A'
-        
-        # Remove mount_points for now
-        if 'mount_points' in system:
-            del system['mount_points']
-
-        # Handle shutdown sequence as string
-        if not system.get('shutdown_sequence'):
-            system['shutdown_sequence'] = None
-        elif isinstance(system['shutdown_sequence'], list):
-            system['shutdown_sequence'] = ';'.join(system['shutdown_sequence']) if system['shutdown_sequence'] else None
-        else:
-            system['shutdown_sequence'] = system['shutdown_sequence'].strip() or None
+        system['shutdown_sequence'] = system.get('shutdown_sequence') or 'N/A'
         
         # Handle cluster nodes
         if not system.get('cluster_nodes'):
