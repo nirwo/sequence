@@ -301,33 +301,20 @@
         </div>
     </nav>
 
-    <div id="systemsPage" class="container">
-        <div class="card">
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table table-striped" id="systemsTable">
-                        <thead>
-                            <tr>
-                                <th onclick="sortTable(0)" style="cursor: pointer;">Name <i class="fas fa-sort"></i></th>
-                                <th onclick="sortTable(1)" style="cursor: pointer;">App Name <i class="fas fa-sort"></i></th>
-                                <th onclick="sortTable(2)" style="cursor: pointer;">Target <i class="fas fa-sort"></i></th>
-                                <th onclick="sortTable(3)" style="cursor: pointer;">DB Name <i class="fas fa-sort"></i></th>
-                                <th onclick="sortTable(4)" style="cursor: pointer;">Status <i class="fas fa-sort"></i></th>
-                                <th onclick="sortTable(5)" style="cursor: pointer;">Last Check <i class="fas fa-sort"></i></th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="systemsTableBody">
-                        </tbody>
-                    </table>
+    <div class="container">
+        <div id="systemsPage">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2>Systems</h2>
+                <div class="btn-group">
+                    <button class="btn btn-outline-primary" onclick="handleImportClick()">
+                        <i class="fas fa-file-import"></i> Import CSV
+                    </button>
+                    <input type="file" id="csvFileInput" accept=".csv" style="display: none;" onchange="handleFileSelect(this)">
                 </div>
             </div>
-        </div>
-    </div>
-
-    <div id="systemsContainer" class="container">
-        <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
-            <!-- System cards will be dynamically added here -->
+            <div id="systemsContainer" class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+                <!-- System cards will be dynamically added here -->
+            </div>
         </div>
     </div>
 
@@ -1841,12 +1828,15 @@
                             recentErrorsList.appendChild(li);
                         });
                     } else {
-                        recentErrorsList.innerHTML = '<li class="list-group-item">No recent errors</li>';
+                        const li = document.createElement('li');
+                        li.className = 'list-group-item text-muted';
+                        li.textContent = 'No recent errors';
+                        recentErrorsList.appendChild(li);
                     }
                 })
                 .catch(error => {
                     console.error('Error updating summary:', error);
-                    showToast('Error updating summary: ' + error.message, 'error');
+                    showToast('Failed to update summary', 'error');
                 });
         }
 
