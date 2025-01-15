@@ -306,6 +306,9 @@
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <h2>Systems</h2>
                 <div>
+                    <button id="massDeleteBtn" class="btn btn-danger me-2" style="display: none;">
+                        <i class="fas fa-trash"></i> Delete Selected (<span id="selectedCount">0</span>)
+                    </button>
                     <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addSystemWizardModal">
                         <i class="fas fa-plus"></i> Add System
                     </button>
@@ -327,9 +330,16 @@
     <template id="systemCardTemplate">
         <div class="col">
             <div class="card h-100">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="card-title mb-0 system-name"></h5>
-                    <span class="status-badge"></span>
+                <div class="card-header">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="d-flex align-items-center">
+                            <div class="form-check me-2">
+                                <input class="form-check-input system-select" type="checkbox" value="">
+                            </div>
+                            <h5 class="card-title mb-0 system-name"></h5>
+                        </div>
+                        <span class="status-badge"></span>
+                    </div>
                 </div>
                 <div class="card-body">
                     <div class="system-details">
@@ -703,6 +713,12 @@
                 // Set system ID
                 card.setAttribute('data-system-id', system._id);
                 
+                // Set up checkbox
+                const checkbox = clone.querySelector('.system-select');
+                checkbox.value = system._id;
+                checkbox.checked = selectedSystems.has(system._id);
+                checkbox.onchange = () => handleSystemSelect(checkbox, system._id);
+                
                 // Set system name
                 const nameElement = clone.querySelector('.system-name');
                 if (nameElement) {
@@ -805,37 +821,42 @@
 
         // Update test results display
         function editSystem(systemId) {
-            const system = systems.find(s => (s._id.$oid || s._id) === systemId);
-            if (!system) {
-                showToast('System not found', 'error');
-                return;
-            }
+            console.log('Editing system:', systemId);
+            fetch(`/api/systems/${systemId}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('System data:', data);
+                    if (!data.system) {
+                        throw new Error('System not found');
+                    }
 
-            const form = document.getElementById('editSystemForm');
-            form.dataset.systemId = systemId;
-            
-            // Set form values with null checks
-            const fields = {
-                'name': system.name,
-                'app_name': system.app_name,
-                'check_type': system.check_type,
-                'target': system.target,
-                'db_name': system.db_name,
-                'db_type': system.db_type,
-                'owner': system.owner,
-                'shutdown_sequence': system.shutdown_sequence,
-                'cluster_nodes': system.cluster_nodes ? system.cluster_nodes.join(',') : ''
-            };
-
-            for (const [field, value] of Object.entries(fields)) {
-                const element = form.querySelector(`[name="${field}"]`);
-                if (element) {
-                    element.value = value || '';
-                }
-            }
-
-            // Show the modal
-            new bootstrap.Modal(document.getElementById('editModal')).show();
+                    // Populate edit form
+                    const form = document.getElementById('editSystemForm');
+                    form.elements['name'].value = data.system.name || '';
+                    form.elements['app_name'].value = data.system.app_name || '';
+                    form.elements['target'].value = data.system.target || '';
+                    form.elements['check_type'].value = data.system.check_type || 'ping';
+                    form.elements['db_type'].value = data.system.db_type || 'N/A';
+                    form.elements['db_name'].value = data.system.db_name || '';
+                    form.elements['db_port'].value = data.system.db_port || '';
+                    form.elements['owner'].value = data.system.owner || '';
+                    
+                    // Set system ID for the form
+                    form.setAttribute('data-system-id', systemId);
+                    
+                    // Show edit modal
+                    const editModal = new bootstrap.Modal(document.getElementById('editModal'));
+                    editModal.show();
+                })
+                .catch(error => {
+                    console.error('Error fetching system:', error);
+                    showToast('Error: ' + error.message, 'error');
+                });
         }
 
         // Save edited system
@@ -849,19 +870,20 @@
                 return;
             }
 
-            const formData = {
-                name: form.querySelector('[name="name"]').value.trim(),
-                app_name: form.querySelector('[name="app_name"]').value.trim(),
-                check_type: form.querySelector('[name="check_type"]').value,
-                target: form.querySelector('[name="target"]').value.trim(),
-                db_name: form.querySelector('[name="db_name"]').value.trim(),
-                db_type: form.querySelector('[name="db_type"]').value.trim(),
-                owner: form.querySelector('[name="owner"]').value.trim(),
-                shutdown_sequence: form.querySelector('[name="shutdown_sequence"]').value.trim(),
-                cluster_nodes: form.querySelector('[name="cluster_nodes"]').value.trim()
+            const formData = new FormData();
+            const fields = {
+                'name': form.elements['name'].value.trim(),
+                'app_name': form.elements['app_name'].value.trim(),
+                'check_type': form.elements['check_type'].value,
+                'target': form.elements['target'].value.trim(),
+                'db_name': form.elements['db_name'].value.trim(),
+                'db_type': form.elements['db_type'].value.trim(),
+                'owner': form.elements['owner'].value.trim(),
+                'shutdown_sequence': form.elements['shutdown_sequence'].value.trim(),
+                'cluster_nodes': form.elements['cluster_nodes'].value.trim()
             };
 
-            if (!formData.name || !formData.app_name) {
+            if (!fields.name || !fields.app_name) {
                 showToast('System Name and Application Name are required', 'error');
                 return;
             }
@@ -871,7 +893,7 @@
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify(formData)
+                body: JSON.stringify(fields)
             })
             .then(response => response.json())
             .then(data => {
@@ -1663,6 +1685,53 @@
             currentStep = 1;
             showStep(1);
             document.getElementById('addSystemWizardForm').reset();
+        });
+
+        // Handle mass delete
+        let selectedSystems = new Set();
+
+        function updateSelectedCount() {
+            const count = selectedSystems.size;
+            document.getElementById('selectedCount').textContent = count;
+            document.getElementById('massDeleteBtn').style.display = count > 0 ? 'inline-block' : 'none';
+        }
+
+        function handleSystemSelect(checkbox, systemId) {
+            if (checkbox.checked) {
+                selectedSystems.add(systemId);
+            } else {
+                selectedSystems.delete(systemId);
+            }
+            updateSelectedCount();
+        }
+
+        // Mass delete function
+        document.getElementById('massDeleteBtn').addEventListener('click', function() {
+            if (selectedSystems.size === 0) return;
+
+            if (!confirm(`Are you sure you want to delete ${selectedSystems.size} selected systems?`)) {
+                return;
+            }
+
+            const deletePromises = Array.from(selectedSystems).map(systemId =>
+                fetch(`/api/systems/${systemId}`, { method: 'DELETE' })
+                    .then(response => {
+                        if (!response.ok) throw new Error(`Failed to delete system ${systemId}`);
+                        return response.json();
+                    })
+            );
+
+            Promise.all(deletePromises)
+                .then(() => {
+                    showToast(`Successfully deleted ${selectedSystems.size} systems`, 'success');
+                    selectedSystems.clear();
+                    updateSelectedCount();
+                    fetchSystems();
+                })
+                .catch(error => {
+                    console.error('Error during mass delete:', error);
+                    showToast('Error deleting some systems. Please try again.', 'error');
+                });
         });
     </script>
 </body>

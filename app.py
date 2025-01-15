@@ -124,6 +124,30 @@ def add_system():
         print(f"Error adding system: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/systems/<system_id>', methods=['GET'])
+def get_system(system_id):
+    try:
+        if not ObjectId.is_valid(system_id):
+            return jsonify({"error": "Invalid system ID format"}), 400
+
+        system = mongo.db.systems.find_one({'_id': ObjectId(system_id)})
+        if not system:
+            return jsonify({"error": "System not found"}), 404
+
+        # Convert ObjectId to string for JSON serialization
+        system['_id'] = str(system['_id'])
+        
+        # Convert datetime objects to strings
+        if 'created_at' in system:
+            system['created_at'] = system['created_at'].isoformat()
+        if 'last_check' in system:
+            system['last_check'] = system['last_check'].isoformat()
+
+        return jsonify({"system": system})
+    except Exception as e:
+        print(f"Error getting system: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/systems/<system_id>', methods=['PUT'])
 def update_system(system_id):
     try:
