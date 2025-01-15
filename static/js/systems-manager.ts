@@ -1,7 +1,9 @@
 class SystemsManager {
-    static async initialize() {
+    static async initialize(): Promise<void> {
         try {
-            UiService.initialize();
+            if (!UiService.initialize()) {
+                throw new Error('Failed to initialize UI Service');
+            }
             await this.loadSystems();
             this.setupEventListeners();
         } catch (error) {
@@ -10,14 +12,14 @@ class SystemsManager {
         }
     }
 
-    private static setupEventListeners() {
+    private static setupEventListeners(): void {
         const refreshButton = document.getElementById('refreshButton');
         if (refreshButton) {
             refreshButton.addEventListener('click', () => this.loadSystems());
         }
     }
 
-    static async loadSystems() {
+    static async loadSystems(): Promise<void> {
         try {
             UiService.clearSystemsContainer();
             const systems = await ApiService.getSystems();
@@ -46,13 +48,13 @@ class SystemsManager {
         }
     }
 
-    static async testSystem(systemId: string) {
+    static async testSystem(systemId: string): Promise<void> {
         try {
             const card = document.querySelector(`[data-system-id="${systemId}"]`);
             if (!card) return;
 
-            const loadingSpinner = card.querySelector('.loading-spinner');
-            const testBtn = card.querySelector('.test-btn');
+            const loadingSpinner = card.querySelector('.loading-spinner') as HTMLElement;
+            const testBtn = card.querySelector('.test-btn') as HTMLButtonElement;
             
             if (loadingSpinner && testBtn) {
                 loadingSpinner.style.display = 'inline-block';
@@ -80,29 +82,52 @@ class SystemsManager {
         }
     }
 
-    static async addSystem(system: Partial<System>) {
+    static async editSystem(systemId: string): Promise<void> {
         try {
-            await ApiService.addSystem(system);
-            UiService.showToast('System added successfully', 'success');
-            await this.loadSystems();
+            const systems = await ApiService.getSystems();
+            const system = systems.find(s => s._id === systemId);
+            
+            if (!system) {
+                UiService.showToast('System not found', 'error');
+                return;
+            }
+
+            const form = document.getElementById('editSystemForm') as HTMLFormElement;
+            if (!form) {
+                UiService.showToast('Edit form not found', 'error');
+                return;
+            }
+
+            form.dataset.systemId = systemId;
+            
+            const fields: Record<string, string | undefined> = {
+                'name': system.name,
+                'app_name': system.app_name,
+                'check_type': system.check_type,
+                'target': system.target,
+                'db_name': system.db_name,
+                'db_type': system.db_type,
+                'owner': system.owner,
+                'shutdown_sequence': system.shutdown_sequence?.join(';'),
+                'cluster_nodes': system.cluster_nodes?.map(node => node.host).join(';')
+            };
+
+            Object.entries(fields).forEach(([field, value]) => {
+                const element = form.querySelector(`[name="${field}"]`) as HTMLInputElement;
+                if (element) {
+                    element.value = value || '';
+                }
+            });
+
+            const modal = new bootstrap.Modal(document.getElementById('editModal') as HTMLElement);
+            modal.show();
         } catch (error) {
-            console.error('Error adding system:', error);
-            UiService.showToast('Error adding system', 'error');
+            console.error('Error editing system:', error);
+            UiService.showToast('Error editing system', 'error');
         }
     }
 
-    static async updateSystem(systemId: string, system: Partial<System>) {
-        try {
-            await ApiService.updateSystem(systemId, system);
-            UiService.showToast('System updated successfully', 'success');
-            await this.loadSystems();
-        } catch (error) {
-            console.error('Error updating system:', error);
-            UiService.showToast('Error updating system', 'error');
-        }
-    }
-
-    static async deleteSystem(systemId: string) {
+    static async deleteSystem(systemId: string): Promise<void> {
         if (!confirm('Are you sure you want to delete this system?')) {
             return;
         }
@@ -117,7 +142,29 @@ class SystemsManager {
         }
     }
 
-    static async importSystems(formData: FormData) {
+    static async addSystem(system: Partial<System>): Promise<void> {
+        try {
+            await ApiService.addSystem(system);
+            UiService.showToast('System added successfully', 'success');
+            await this.loadSystems();
+        } catch (error) {
+            console.error('Error adding system:', error);
+            UiService.showToast('Error adding system', 'error');
+        }
+    }
+
+    static async updateSystem(systemId: string, system: Partial<System>): Promise<void> {
+        try {
+            await ApiService.updateSystem(systemId, system);
+            UiService.showToast('System updated successfully', 'success');
+            await this.loadSystems();
+        } catch (error) {
+            console.error('Error updating system:', error);
+            UiService.showToast('Error updating system', 'error');
+        }
+    }
+
+    static async importSystems(formData: FormData): Promise<void> {
         try {
             const result = await ApiService.importSystems(formData);
             UiService.showToast(result.message, 'success');

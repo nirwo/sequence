@@ -1,20 +1,38 @@
 class UiService {
-    private static systemCardTemplate: HTMLTemplateElement;
-    private static systemsContainer: HTMLElement;
-    private static toastContainer: HTMLElement;
+    private static systemCardTemplate: HTMLTemplateElement | null = null;
+    private static systemsContainer: HTMLElement | null = null;
+    private static toastContainer: HTMLDivElement | null = null;
+    private static initialized: boolean = false;
 
-    static initialize() {
-        this.systemCardTemplate = document.getElementById('systemCardTemplate') as HTMLTemplateElement;
-        this.systemsContainer = document.getElementById('systemsContainer') as HTMLElement;
-        this.ensureToastContainer();
+    static initialize(): boolean {
+        if (this.initialized) {
+            return true;
+        }
 
-        if (!this.systemCardTemplate || !this.systemsContainer) {
-            throw new Error('Required DOM elements not found');
+        try {
+            this.systemCardTemplate = document.getElementById('systemCardTemplate') as HTMLTemplateElement;
+            this.systemsContainer = document.getElementById('systemsContainer') as HTMLDivElement;
+            
+            if (!this.systemCardTemplate || !this.systemsContainer) {
+                console.error('Required DOM elements not found. Make sure the page is fully loaded.');
+                return false;
+            }
+
+            this.ensureToastContainer();
+            this.initialized = true;
+            return true;
+        } catch (error) {
+            console.error('Error initializing UI Service:', error);
+            return false;
         }
     }
 
-    private static ensureToastContainer() {
-        let container = document.getElementById('toastContainer');
+    private static ensureToastContainer(): void {
+        if (this.toastContainer) {
+            return;
+        }
+
+        let container = document.getElementById('toastContainer') as HTMLDivElement;
         if (!container) {
             container = document.createElement('div');
             container.id = 'toastContainer';
@@ -25,8 +43,11 @@ class UiService {
         this.toastContainer = container;
     }
 
-    static showToast(message: string, type: 'success' | 'error' = 'success', duration = 5000) {
-        const toast = document.createElement('div');
+    static showToast(message: string, type: 'success' | 'error' = 'success', duration = 5000): void {
+        this.ensureToastContainer();
+        if (!this.toastContainer) return;
+
+        const toast = document.createElement('div') as HTMLDivElement;
         toast.className = `toast align-items-center text-white border-0 ${type === 'error' ? 'bg-danger' : 'bg-success'}`;
         toast.setAttribute('role', 'alert');
         toast.setAttribute('aria-live', 'assertive');
@@ -48,22 +69,25 @@ class UiService {
 
         toast.addEventListener('hidden.bs.toast', () => {
             toast.remove();
-            if (this.toastContainer.children.length === 0) {
+            if (this.toastContainer && this.toastContainer.children.length === 0) {
                 this.toastContainer.remove();
+                this.toastContainer = null;
             }
         });
     }
 
     static createSystemCard(system: System): DocumentFragment | null {
+        if (!this.systemCardTemplate) return null;
+
         try {
             const clone = document.importNode(this.systemCardTemplate.content, true);
-            const card = clone.querySelector('.card');
+            const card = clone.querySelector('.card') as HTMLDivElement;
             if (!card) return null;
 
             card.setAttribute('data-system-id', system._id);
 
             // Set system name and status
-            const elements = {
+            const elements: Record<string, string> = {
                 '.system-name': system.name || 'Unnamed System',
                 '.status-badge': system.status ? 'Online' : 'Offline',
                 '.status-text': `${system.name || 'System'} is ${system.status ? 'online' : 'offline'}`,
@@ -84,7 +108,6 @@ class UiService {
                 }
             });
 
-            // Set up cluster nodes
             this.setupClusterNodes(clone, system);
             this.setupButtons(clone, system._id);
 
@@ -95,8 +118,8 @@ class UiService {
         }
     }
 
-    private static setupClusterNodes(clone: DocumentFragment, system: System) {
-        const clusterNodesDiv = clone.querySelector('.cluster-nodes');
+    private static setupClusterNodes(clone: DocumentFragment, system: System): void {
+        const clusterNodesDiv = clone.querySelector('.cluster-nodes') as HTMLDivElement;
         if (clusterNodesDiv && system.cluster_nodes?.length) {
             const nodesHtml = `
                 <p class="mb-2"><strong>Cluster Nodes:</strong></p>
@@ -116,8 +139,8 @@ class UiService {
         }
     }
 
-    private static setupButtons(clone: DocumentFragment, systemId: string) {
-        const testBtn = clone.querySelector('.test-btn');
+    private static setupButtons(clone: DocumentFragment, systemId: string): void {
+        const testBtn = clone.querySelector('.test-btn') as HTMLButtonElement;
         if (testBtn) {
             testBtn.innerHTML = `
                 <i class="fas fa-sync-alt loading-spinner" style="display: none;"></i>
@@ -126,26 +149,26 @@ class UiService {
             testBtn.addEventListener('click', () => SystemsManager.testSystem(systemId));
         }
 
-        const editBtn = clone.querySelector('.edit-btn');
+        const editBtn = clone.querySelector('.edit-btn') as HTMLButtonElement;
         if (editBtn) {
             editBtn.addEventListener('click', () => SystemsManager.editSystem(systemId));
         }
 
-        const deleteBtn = clone.querySelector('.delete-btn');
+        const deleteBtn = clone.querySelector('.delete-btn') as HTMLButtonElement;
         if (deleteBtn) {
             deleteBtn.addEventListener('click', () => SystemsManager.deleteSystem(systemId));
         }
     }
 
-    static updateSystemStatus(systemId: string, status: boolean) {
-        const systemCard = document.querySelector(`[data-system-id="${systemId}"]`);
+    static updateSystemStatus(systemId: string, status: boolean): void {
+        const systemCard = document.querySelector(`[data-system-id="${systemId}"]`) as HTMLElement;
         if (!systemCard) return;
 
         const elements = {
-            statusBadge: systemCard.querySelector('.status-badge'),
-            statusText: systemCard.querySelector('.status-text'),
-            loadingSpinner: systemCard.querySelector('.loading-spinner'),
-            testBtn: systemCard.querySelector('.test-btn')
+            statusBadge: systemCard.querySelector('.status-badge') as HTMLElement,
+            statusText: systemCard.querySelector('.status-text') as HTMLElement,
+            loadingSpinner: systemCard.querySelector('.loading-spinner') as HTMLElement,
+            testBtn: systemCard.querySelector('.test-btn') as HTMLButtonElement
         };
 
         if (elements.loadingSpinner) {
@@ -170,13 +193,13 @@ class UiService {
         }
     }
 
-    static clearSystemsContainer() {
+    static clearSystemsContainer(): void {
         if (this.systemsContainer) {
             this.systemsContainer.innerHTML = '';
         }
     }
 
-    static showEmptyState() {
+    static showEmptyState(): void {
         if (this.systemsContainer) {
             this.systemsContainer.innerHTML = `
                 <div class="col-12 text-center">
@@ -186,7 +209,7 @@ class UiService {
         }
     }
 
-    static showErrorState(error: string) {
+    static showErrorState(error: string): void {
         if (this.systemsContainer) {
             this.systemsContainer.innerHTML = `
                 <div class="col-12 text-center">
